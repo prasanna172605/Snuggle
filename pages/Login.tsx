@@ -244,8 +244,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigate, onGoogleSetupNeeded 
               />
             </svg>
           </div>
-          <h2 className="text-2xl font-black text-gray-900 tracking-tight">Log In</h2>
-          <p className="text-gray-400 text-sm font-medium mt-1">Please enter your details</p>
+          <h2 className="text-2xl font-black text-gray-900 tracking-tight">SNUGGLE</h2>
+          <p className="text-gray-400 text-sm font-medium mt-1">Our Private Space 💞</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -292,7 +292,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigate, onGoogleSetupNeeded 
           >
             {loading ? <Loader2 className="animate-spin w-5 h-5" /> : (
               <>
-                Log In <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                Enter Our World 🤍🌍 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </>
             )}
           </button>
