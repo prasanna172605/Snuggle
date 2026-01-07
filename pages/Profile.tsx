@@ -52,12 +52,35 @@ const Profile: React.FC<ProfileProps> = ({ user, currentUser, isOwnProfile, onLo
     }, [user.id, currentUser.id]);
 
     const handleFollowToggle = async () => {
-        if (isFollowing) {
-            await DBService.unfollowUser(currentUser.id, user.id);
+        const previousIsFollowing = isFollowing;
+        const previousFollowers = followers;
+
+        // Optimistic UI Update
+        setIsFollowing(!previousIsFollowing);
+
+        if (previousIsFollowing) {
+            // Unfollowing: Remove current user from followers list
+            setFollowers(prev => prev.filter(u => u.id !== currentUser.id));
         } else {
-            await DBService.followUser(currentUser.id, user.id);
+            // Following: Add current user to followers list
+            // Ensure we don't duplicate if already there (for safety)
+            if (!followers.some(u => u.id === currentUser.id)) {
+                setFollowers(prev => [...prev, currentUser]);
+            }
         }
-        setIsFollowing(!isFollowing);
+
+        try {
+            if (previousIsFollowing) {
+                await DBService.unfollowUser(currentUser.id, user.id);
+            } else {
+                await DBService.followUser(currentUser.id, user.id);
+            }
+        } catch (error) {
+            console.error('Follow action failed:', error);
+            // Revert on failure
+            setIsFollowing(previousIsFollowing);
+            setFollowers(previousFollowers);
+        }
     };
 
     const handleShowList = (title: string, users: User[]) => {
