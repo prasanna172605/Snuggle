@@ -23,7 +23,7 @@ import { db, auth, storage, googleProvider, realtimeDb } from './firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged, signOut, deleteUser as deleteFirebaseUser, createUserWithEmailAndPassword } from 'firebase/auth';
 import { onSnapshot } from 'firebase/firestore';
-import { ref as rtdbRef, set, onDisconnect, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
+import { ref as rtdbRef, set, onDisconnect, serverTimestamp as rtdbServerTimestamp, onValue, off } from 'firebase/database';
 
 // Types
 export interface User {
@@ -764,7 +764,6 @@ export class DBService {
         await updateDoc(chatRef, {
             [`unreadCounts.${messageData.receiverId}`]: increment(1)
         });
-        console.log('[sendMessage] Chat doc updated, unreadCounts incremented for:', messageData.receiverId);
 
         return { ...messageData, status: finalStatus };
     }
@@ -794,7 +793,6 @@ export class DBService {
         callback: (messages: import('../types').Message[]) => void
     ): () => void {
         const chatId = this.getChatId(userId1, userId2);
-        console.log('[subscribeToMessages] Setting up subscription for chatId:', chatId);
 
         const q = query(
             collection(db, 'chats', chatId, 'messages'),
@@ -804,7 +802,6 @@ export class DBService {
 
         const unsubscribe = onSnapshot(q,
             (snapshot) => {
-                console.log('[subscribeToMessages] Received snapshot with', snapshot.docs.length, 'docs');
                 const messages = snapshot.docs.map(doc => {
                     const data = doc.data();
                     return {
@@ -907,6 +904,35 @@ export class DBService {
         }
     }
 
+    // Subscribe to typing status from another user
+    static subscribeToTyping(
+        otherUserId: string,
+        currentUserId: string,
+        callback: (isTyping: boolean) => void
+    ): () => void {
+        const typingRef = rtdbRef(realtimeDb, `typing/${otherUserId}_${currentUserId}`);
+
+        const listener = onValue(typingRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data && data.isTyping) {
+                // Check if typing event is recent (within 5 seconds)
+                const timestamp = data.timestamp;
+                if (timestamp && Date.now() - timestamp < 5000) {
+                    callback(true);
+                } else {
+                    callback(false);
+                }
+            } else {
+                callback(false);
+            }
+        }, (error) => {
+            console.warn('RTDB typing subscription error:', error);
+            callback(false);
+        });
+
+        return () => off(typingRef, 'value', listener);
+    }
+
     static async reactToMessage(chatId: string, messageId: string, userId: string, emoji: string): Promise<void> {
         const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
         await updateDoc(messageRef, {
@@ -973,7 +999,6 @@ export class DBService {
         const unsubscribe = onSnapshot(q, async (snapshot) => {
             const chats = await Promise.all(snapshot.docs.map(async doc => {
                 const data = doc.data();
-                console.log('[subscribeToUserChats] Raw chat doc:', doc.id, 'data:', JSON.stringify(data, null, 2));
                 const otherUserId = data.participants.find((p: string) => p !== userId);
                 const otherUser = otherUserId ? await this.getUserById(otherUserId) : null;
 

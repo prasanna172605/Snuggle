@@ -55,12 +55,10 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
   };
 
   useEffect(() => {
-    console.log('[Chat useEffect] Running for currentUser:', currentUser.id, 'otherUser:', otherUser.id);
     checkPresence();
 
     // Real-time subscription for messages - enables instant status updates (including "seen")
     const unsubscribe = DBService.subscribeToMessages(currentUser.id, otherUser.id, (msgs) => {
-      console.log('[Chat useEffect] Received', msgs.length, 'messages via subscription');
       setMessages(msgs);
       setLoading(false);
     });
@@ -69,12 +67,9 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
     const markSeen = async () => {
       const msgs = await DBService.getMessages(currentUser.id, otherUser.id);
       const unreadMessages = msgs.filter(m => m.senderId === otherUser.id && m.status !== 'seen');
-      console.log('[markSeen] Unread messages from other user:', unreadMessages.length, unreadMessages.map(m => ({ id: m.id, status: m.status })));
       if (unreadMessages.length > 0) {
         const chatId = DBService.getChatId(currentUser.id, otherUser.id);
-        console.log('[markSeen] Marking messages as read for chatId:', chatId);
         await DBService.markMessagesAsRead(chatId, currentUser.id);
-        console.log('[markSeen] Done marking as read');
       }
     }
     markSeen();
@@ -104,31 +99,29 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
       }
     };
 
+    // Subscribe to typing status
+    const unsubscribeTyping = DBService.subscribeToTyping(otherUser.id, currentUser.id, (isTyping) => {
+      setIsOtherUserTyping(isTyping);
+    });
+
     const interval = setInterval(() => {
       loadMessages();
       checkPresence();
-      const storedEvent = localStorage.getItem('snuggle_typing_v1');
-      if (storedEvent) {
-        const data = JSON.parse(storedEvent);
-        if (data.senderId === otherUser.id && data.receiverId === currentUser.id && Date.now() - data.timestamp > 3000) {
-          setIsOtherUserTyping(false);
-        }
-      }
+      // Only keep interval for messages/presence polling if needed, typing is now real-time
     }, 2000);
 
     window.addEventListener('local-storage-update', handleStorageChange);
-    window.addEventListener('local-storage-typing', handleStorageChange);
     window.addEventListener('local-storage-presence', handleStorageChange);
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('click', handleClickOutside);
 
     return () => {
-      unsubscribe(); // Cleanup real-time listener
+      unsubscribe(); // Cleanup real-time messages listener
+      unsubscribeTyping(); // Cleanup typing listener
       clearInterval(interval);
       if (timerRef.current) clearInterval(timerRef.current);
       if (visualizerIntervalRef.current) clearInterval(visualizerIntervalRef.current);
       window.removeEventListener('local-storage-update', handleStorageChange);
-      window.removeEventListener('local-storage-typing', handleStorageChange);
       window.removeEventListener('local-storage-presence', handleStorageChange);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('click', handleClickOutside);
@@ -549,9 +542,9 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
               <img src={otherUser.avatar} className="w-8 h-8 rounded-full shadow-sm" />
             </div>
             <div className="bg-white dark:bg-dark-border px-4 py-3 rounded-2xl rounded-tl-md shadow-sm flex items-center space-x-1 border border-gray-100 dark:border-gray-700">
-              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full typing-dot"></div>
+              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full typing-dot"></div>
+              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full typing-dot"></div>
             </div>
           </div>
         )}

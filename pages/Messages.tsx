@@ -81,7 +81,6 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
     useEffect(() => {
         // Real-time subscription for inbox - enables live updates without refresh
         const unsubscribe = DBService.subscribeToUserChats(currentUser.id, (chats) => {
-            console.log('[Messages] Received', chats.length, 'chats from subscription');
             if (chats.length > 0) {
                 const users: User[] = [];
                 const msgs: Record<string, Message | null> = {};
@@ -90,7 +89,6 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
                     if (chat.otherUser) {
                         const unreadMap = chat.unreadCounts || {};
                         const unreadCount = unreadMap[currentUser.id] || 0;
-                        console.log('[Messages] Chat with', chat.otherUser.fullName, '- unreadCounts:', unreadMap, 'myUnread:', unreadCount);
 
                         users.push({
                             ...chat.otherUser,
