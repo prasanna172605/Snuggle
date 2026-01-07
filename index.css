@@ -1,0 +1,120 @@
+/* Standard CSS Only - Tailwind is handled via CDN in index.html */
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-color: #0f172a;
+  -webkit-tap-highlight-color: transparent;
+  margin: 0;
+  padding: 0;
+}
+
+/* Global Animated Mesh Gradient Background */
+.mesh-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  background-color: #ffdee9;
+  background-image: linear-gradient(0deg, #ffdee9 0%, #b5fffc 100%);
+  overflow: hidden;
+}
+
+.dark .mesh-bg {
+  background-color: #000000;
+  background-image: radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.dark .glass-panel {
+  background: rgba(20, 20, 25, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.safe-pb {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Floating Emoji Animation */
+.floating-elements {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.float-element {
+  position: absolute;
+  font-size: 2rem;
+  opacity: 0.5;
+  animation: floatAround 10s ease-in-out infinite;
+}
+
+.float-element:nth-child(1) {
+  top: 10%;
+  left: 10%;
+  animation-delay: 0s;
+}
+
+.float-element:nth-child(2) {
+  top: 20%;
+  right: 15%;
+  animation-delay: 1s;
+}
+
+.float-element:nth-child(3) {
+  bottom: 30%;
+  left: 15%;
+  animation-delay: 2s;
+}
+
+.float-element:nth-child(4) {
+  top: 50%;
+  right: 10%;
+  animation-delay: 3s;
+}
+
+.float-element:nth-child(5) {
+  bottom: 20%;
+  right: 20%;
+  animation-delay: 4s;
+}
+
+@keyframes floatAround {
+
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  25% {
+    transform: translate(20px, -20px) rotate(10deg);
+  }
+
+  50% {
+    transform: translate(0, -30px) rotate(0deg);
+  }
+
+  75% {
+    transform: translate(-20px, -10px) rotate(-10deg);
+  }
+}
