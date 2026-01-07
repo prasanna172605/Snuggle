@@ -10,9 +10,13 @@ service firebase.storage {
     function isImageFile() {
       return request.resource.contentType.matches('image/.*');
     }
-    
+
     function isVideoFile() {
       return request.resource.contentType.matches('video/.*');
+    }
+
+    function isAudioFile() {
+      return request.resource.contentType.matches('audio/.*');
     }
     
     function isValidSize() {
@@ -49,11 +53,11 @@ service firebase.storage {
       allow delete: if isSignedIn() && request.auth.uid == userId;
     }
     
-    // Message images
+    // Message media (images, video, audio)
     match /messages/{chatId}/{fileName} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && 
-                     isImageFile() && 
+                     (isImageFile() || isVideoFile() || isAudioFile()) && 
                      isValidSize();
       allow delete: if isSignedIn();
     }

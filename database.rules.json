@@ -11,6 +11,12 @@
                 ".read": "auth != null",
                 ".write": "$uid === auth.uid"
             }
+        },
+        "typing": {
+            "$chatKey": {
+                ".read": "auth != null",
+                ".write": "auth != null"
+            }
         }
     }
 }

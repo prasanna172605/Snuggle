@@ -16,7 +16,8 @@ import {
     arrayRemove,
     increment,
     serverTimestamp,
-    QueryConstraint
+    QueryConstraint,
+    collectionGroup
 } from 'firebase/firestore';
 import { db, auth, storage, googleProvider, realtimeDb } from './firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -61,16 +62,8 @@ export interface Comment {
     createdAt: Timestamp;
 }
 
-export interface Message {
-    id: string;
-    chatId: string;
-    senderId: string;
-    receiverId: string;
-    text?: string;
-    imageUrl?: string;
-    timestamp: Timestamp;
-    read: boolean;
-}
+// Local Message interface removed to use shared types
+// export interface Message { ... }
 
 export interface Story {
     id: string;
@@ -378,6 +371,24 @@ export class DBService {
         // Update Firestore
         const userRef = doc(db, 'users', userId);
         await updateDoc(userRef, { isOnline });
+
+        // When user comes online, mark all pending "sent" messages to them as "delivered"
+        if (isOnline) {
+            try {
+                const pendingMsgsQuery = query(
+                    collectionGroup(db, 'messages'),
+                    where('receiverId', '==', userId),
+                    where('status', '==', 'sent')
+                );
+                const snapshot = await getDocs(pendingMsgsQuery);
+                const updatePromises = snapshot.docs.map(doc =>
+                    updateDoc(doc.ref, { status: 'delivered' })
+                );
+                await Promise.all(updatePromises);
+            } catch (error) {
+                console.warn('Failed to update pending messages to delivered:', error);
+            }
+        }
 
         // Also update Realtime Database for real-time presence
         try {
@@ -717,56 +728,273 @@ export class DBService {
         return [userId1, userId2].sort().join('_');
     }
 
-    static async sendMessage(messageData: Omit<Message, 'id' | 'timestamp' | 'read' | 'chatId'>): Promise<Message> {
+    static async sendMessage(messageData: import('../types').Message): Promise<import('../types').Message> {
         const chatId = this.getChatId(messageData.senderId, messageData.receiverId);
-        const messageRef = doc(collection(db, 'messages', chatId, 'messages'));
+        const messageRef = doc(collection(db, 'chats', chatId, 'messages'), messageData.id);
 
-        const newMessage: Message = {
-            id: messageRef.id,
+        const firestoreMessage = {
             ...messageData,
-            chatId,
-            timestamp: Timestamp.now(),
-            read: false
+            timestamp: Timestamp.fromMillis(messageData.timestamp)
         };
 
-        await setDoc(messageRef, newMessage);
+        await setDoc(messageRef, firestoreMessage);
 
-        // Update chat metadata
+        // Check if receiver is online - only mark as "delivered" if they are
+        const receiver = await this.getUserById(messageData.receiverId);
+        let finalStatus: 'sent' | 'delivered' = 'sent';
+
+        if (receiver?.isOnline) {
+            await updateDoc(messageRef, { status: 'delivered' });
+            finalStatus = 'delivered';
+        }
+        // If receiver is offline, keep status as 'sent' (single tick)
+
         const chatRef = doc(db, 'chats', chatId);
+        console.log('[sendMessage] Updating chat doc with unreadCounts for receiver:', messageData.receiverId);
+
+        // First ensure the chat doc exists with basic info
         await setDoc(chatRef, {
             participants: [messageData.senderId, messageData.receiverId],
-            lastMessage: newMessage.text || 'Sent a photo',
-            lastMessageTime: newMessage.timestamp,
+            lastMessage: messageData.type === 'text' ? messageData.text : `Sent a ${messageData.type}`,
+            lastMessageTime: firestoreMessage.timestamp,
             lastSenderId: messageData.senderId
         }, { merge: true });
 
-        return newMessage;
+        // Then update the nested unreadCounts field using updateDoc (which properly handles dot notation)
+        await updateDoc(chatRef, {
+            [`unreadCounts.${messageData.receiverId}`]: increment(1)
+        });
+        console.log('[sendMessage] Chat doc updated, unreadCounts incremented for:', messageData.receiverId);
+
+        return { ...messageData, status: finalStatus };
     }
 
-    static async getMessages(userId1: string, userId2: string, maxMessages: number = 50): Promise<Message[]> {
+    static async getMessages(userId1: string, userId2: string, maxMessages: number = 50): Promise<import('../types').Message[]> {
         const chatId = this.getChatId(userId1, userId2);
         const q = query(
-            collection(db, 'messages', chatId, 'messages'),
+            collection(db, 'chats', chatId, 'messages'),
             orderBy('timestamp', 'desc'),
             limit(maxMessages)
         );
 
         const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => doc.data() as Message).reverse();
+        return querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                ...data,
+                timestamp: (data.timestamp as Timestamp).toMillis()
+            } as import('../types').Message;
+        }).reverse();
+    }
+
+    // Real-time subscription for messages - enables instant status updates
+    static subscribeToMessages(
+        userId1: string,
+        userId2: string,
+        callback: (messages: import('../types').Message[]) => void
+    ): () => void {
+        const chatId = this.getChatId(userId1, userId2);
+        console.log('[subscribeToMessages] Setting up subscription for chatId:', chatId);
+
+        const q = query(
+            collection(db, 'chats', chatId, 'messages'),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+        );
+
+        const unsubscribe = onSnapshot(q,
+            (snapshot) => {
+                console.log('[subscribeToMessages] Received snapshot with', snapshot.docs.length, 'docs');
+                const messages = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        ...data,
+                        timestamp: (data.timestamp as Timestamp).toMillis()
+                    } as import('../types').Message;
+                }).reverse();
+                callback(messages);
+            },
+            (error) => {
+                console.error('[subscribeToMessages] Error:', error.message, error.code);
+            }
+        );
+
+        return unsubscribe;
+    }
+
+    static async getLastMessage(userId1: string, userId2: string): Promise<import('../types').Message | null> {
+        try {
+            const chatId = this.getChatId(userId1, userId2);
+            const q = query(
+                collection(db, `chats/${chatId}/messages`),
+                orderBy('timestamp', 'desc'),
+                limit(1)
+            );
+
+            const querySnapshot = await getDocs(q);
+            if (querySnapshot.empty) return null;
+
+            const data = querySnapshot.docs[0].data();
+            return {
+                ...data,
+                timestamp: (data.timestamp as Timestamp).toMillis()
+            } as import('../types').Message;
+        } catch (error) {
+            console.error('Error getting last message:', error);
+            return null;
+        }
     }
 
     static async markMessagesAsRead(chatId: string, userId: string): Promise<void> {
+        console.log('[markMessagesAsRead] Called with chatId:', chatId, 'userId:', userId);
         const q = query(
-            collection(db, 'messages', chatId, 'messages'),
+            collection(db, 'chats', chatId, 'messages'),
             where('receiverId', '==', userId),
-            where('read', '==', false)
+            where('status', '!=', 'seen')
         );
 
         const querySnapshot = await getDocs(q);
-        const updatePromises = querySnapshot.docs.map(doc =>
-            updateDoc(doc.ref, { read: true })
-        );
+        console.log('[markMessagesAsRead] Found', querySnapshot.docs.length, 'unread messages');
+
+        const updatePromises = querySnapshot.docs.map(doc => {
+            console.log('[markMessagesAsRead] Updating message:', doc.id, 'to seen');
+            return updateDoc(doc.ref, { status: 'seen' });
+        });
+
+        // Reset unread count for this user
+        const chatRef = doc(db, 'chats', chatId);
+        updatePromises.push(updateDoc(chatRef, {
+            [`unreadCounts.${userId}`]: 0
+        }));
+
         await Promise.all(updatePromises);
+        console.log('[markMessagesAsRead] Done, updated', querySnapshot.docs.length, 'messages and reset unread count');
+    }
+
+    // Alias for compatibility
+    static async markAsSeen(senderId: string, currentUserId: string): Promise<void> {
+        const chatId = this.getChatId(senderId, currentUserId);
+        await this.markMessagesAsRead(chatId, currentUserId);
+    }
+
+    static async deleteChat(chatId: string): Promise<void> {
+        // 1. Delete all messages in the subcollection
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
+        const snapshot = await getDocs(messagesRef);
+
+        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+
+        // 2. Delete the chat document itself
+        const chatRef = doc(db, 'chats', chatId);
+        await deleteDoc(chatRef);
+    }
+
+    static async sendTyping(senderId: string, receiverId: string, isTyping: boolean): Promise<void> {
+        try {
+            const typingRef = rtdbRef(realtimeDb, `typing/${senderId}_${receiverId}`);
+            await set(typingRef, {
+                isTyping,
+                timestamp: rtdbServerTimestamp()
+            });
+        } catch (e) {
+            console.warn('RTDB typing failed, using local storage fallback');
+            const event = new CustomEvent('local-storage-typing', {
+                detail: { senderId, receiverId, isTyping, timestamp: Date.now() }
+            });
+            window.dispatchEvent(event);
+            localStorage.setItem('snuggle_typing_v1', JSON.stringify({ senderId, receiverId, isTyping, timestamp: Date.now() }));
+        }
+    }
+
+    static async reactToMessage(chatId: string, messageId: string, userId: string, emoji: string): Promise<void> {
+        const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
+        await updateDoc(messageRef, {
+            [`reactions.${userId}`]: emoji
+        });
+    }
+
+    static async deleteMessage(chatId: string, messageId: string): Promise<void> {
+        const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
+        await deleteDoc(messageRef);
+
+        // Optional: Update lastMessage if the deleted message was the last one
+        // This is complex as we need to find the new last message. 
+        // For now, we'll leave it as is, or we can fetch the new last message.
+        // A robust implementation would be to re-fetch the last message.
+
+        /* 
+        const lastMsg = await this.getLastMessage(chatId_part1, chatId_part2); 
+        // We'd need to parse chatId back to userIds or just query the subcollection
+        */
+    }
+
+    static async getUserChats(userId: string): Promise<any[]> {
+        const q = query(
+            collection(db, 'chats'),
+            where('participants', 'array-contains', userId)
+            // orderBy('lastMessageTime', 'desc') // Checking removed to avoid index requirement
+        );
+
+        const querySnapshot = await getDocs(q);
+        const chats = await Promise.all(querySnapshot.docs.map(async doc => {
+            const data = doc.data();
+            const otherUserId = data.participants.find((p: string) => p !== userId);
+            const otherUser = otherUserId ? await this.getUserById(otherUserId) : null;
+
+            // Handle timestamp conversion safely
+            let safeTimestamp = 0;
+            if (data.lastMessageTime) {
+                safeTimestamp = data.lastMessageTime.toMillis ? data.lastMessageTime.toMillis() : 0;
+            }
+
+            return {
+                id: doc.id,
+                ...data,
+                otherUser,
+                lastMessageTimeValue: safeTimestamp // For sorting
+            };
+        }));
+
+        // Sort in memory
+        return chats.sort((a, b) => b.lastMessageTimeValue - a.lastMessageTimeValue);
+    }
+
+    // Real-time subscription for user's chats (inbox) - enables live updates
+    static subscribeToUserChats(
+        userId: string,
+        callback: (chats: any[]) => void
+    ): () => void {
+        const q = query(
+            collection(db, 'chats'),
+            where('participants', 'array-contains', userId)
+        );
+
+        const unsubscribe = onSnapshot(q, async (snapshot) => {
+            const chats = await Promise.all(snapshot.docs.map(async doc => {
+                const data = doc.data();
+                console.log('[subscribeToUserChats] Raw chat doc:', doc.id, 'data:', JSON.stringify(data, null, 2));
+                const otherUserId = data.participants.find((p: string) => p !== userId);
+                const otherUser = otherUserId ? await this.getUserById(otherUserId) : null;
+
+                let safeTimestamp = 0;
+                if (data.lastMessageTime) {
+                    safeTimestamp = data.lastMessageTime.toMillis ? data.lastMessageTime.toMillis() : 0;
+                }
+
+                return {
+                    id: doc.id,
+                    ...data,
+                    otherUser,
+                    lastMessageTimeValue: safeTimestamp
+                };
+            }));
+
+            // Sort by most recent
+            callback(chats.sort((a, b) => b.lastMessageTimeValue - a.lastMessageTimeValue));
+        });
+
+        return unsubscribe;
     }
 
     // ==================== STORY OPERATIONS ====================
@@ -960,24 +1188,7 @@ export class DBService {
         }
     }
 
-    static async getLastMessage(userId1: string, userId2: string): Promise<Message | null> {
-        try {
-            const chatId = this.getChatId(userId1, userId2);
-            const q = query(
-                collection(db, `chats/${chatId}/messages`),
-                orderBy('timestamp', 'desc'),
-                limit(1)
-            );
 
-            const querySnapshot = await getDocs(q);
-            if (querySnapshot.empty) return null;
-
-            return querySnapshot.docs[0].data() as Message;
-        } catch (error) {
-            console.error('Error getting last message:', error);
-            return null;
-        }
-    }
 
 
 }
