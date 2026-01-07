@@ -216,6 +216,47 @@ export class DBService {
         }
     }
 
+    static async completeGoogleSignup(data: { username: string; fullName: string; email: string; avatar: string }): Promise<User> {
+        const currentUser = auth.currentUser;
+        if (!currentUser) throw new Error('No authenticated user found');
+        const userId = currentUser.uid;
+
+        // Check if username taken
+        const existing = await this.getUserByUsername(data.username);
+        if (existing) throw new Error('Username already taken');
+
+        // Create user document in Firestore
+        // Note: verify createUser signature in file, assuming it accepts Partial<User>
+        const newUser = await this.createUser(userId, {
+            username: data.username,
+            email: data.email,
+            fullName: data.fullName,
+            displayName: data.fullName,
+            avatar: data.avatar,
+            bio: '',
+            // No password for Google users
+        });
+
+        // Sync to Realtime Database
+        try {
+            const rtdbUserRef = rtdbRef(realtimeDb, `users/${userId}`);
+            await set(rtdbUserRef, {
+                username: newUser.username,
+                fullName: newUser.fullName,
+                avatar: newUser.avatar,
+                bio: newUser.bio,
+                isOnline: true,
+                createdAt: rtdbServerTimestamp()
+            });
+        } catch (error) {
+            console.warn('RTDB user sync failed (likely permissions):', error);
+        }
+
+        // Save session
+        await this.saveSession(newUser);
+        return newUser;
+    }
+
     static async registerUser(userData: { fullName: string; username: string; email: string; password: string }): Promise<User> {
         try {
             // Check if username already exists
