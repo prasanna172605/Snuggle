@@ -786,10 +786,33 @@ export class DBService {
             lastSenderId: messageData.senderId
         }, { merge: true });
 
-        // Then update the nested unreadCounts field using updateDoc (which properly handles dot notation)
+        // Then update the nested unreadCounts field
         await updateDoc(chatRef, {
             [`unreadCounts.${messageData.receiverId}`]: increment(1)
         });
+
+        // Trigger Push Notification via Vercel Function
+        // Only if receiver is offline to save quota, or always? Always is safer for "background" checks.
+        // The service worker will handle deduping if app is open.
+        try {
+            const senderProfile = await this.getUserById(messageData.senderId);
+            const senderName = senderProfile?.fullName || "New Message";
+            const msgBody = messageData.type === 'text' ? messageData.text : `Sent a ${messageData.type}`;
+
+            fetch('/api/send-push', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    receiverId: messageData.receiverId,
+                    title: senderName,
+                    body: msgBody,
+                    url: '/messages',
+                    icon: senderProfile?.avatar
+                })
+            }).catch(e => console.warn('Push API trigger failed:', e));
+        } catch (err) {
+            console.warn('Error initiating push:', err);
+        }
 
         return { ...messageData, status: finalStatus };
     }
