@@ -27,3 +27,26 @@ messaging.onBackgroundMessage((payload) => {
 
     self.registration.showNotification(notificationTitle, notificationOptions);
 });
+
+self.addEventListener('notificationclick', function (event) {
+    console.log('[firebase-messaging-sw.js] Notification click Received.');
+    event.notification.close();
+
+    // Open the app or focus if open
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+            // Check if there is already a window/tab open with the target URL
+            for (var i = 0; i < windowClients.length; i++) {
+                var client = windowClients[i];
+                // Check if the client is focusable (it is a window)
+                if (client.url.indexOf('/') !== -1 && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            // If not, open a new window
+            if (clients.openWindow) {
+                return clients.openWindow('/messages'); // Open directly to messages
+            }
+        })
+    );
+});
