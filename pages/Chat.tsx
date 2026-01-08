@@ -121,6 +121,9 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
 
     // Mark messages as seen when new ones arrive and we are viewing them
     const markUnreadAsSeen = async () => {
+      // Only mark as seen if the page is visible
+      if (document.visibilityState !== 'visible') return;
+
       const unreadMessages = messages.filter(m => m.senderId === otherUser.id && m.status !== 'seen');
       if (unreadMessages.length > 0) {
         const chatId = DBService.getChatId(currentUser.id, otherUser.id);
@@ -128,7 +131,19 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
       }
     };
     markUnreadAsSeen();
-  }, [messages, isOtherUserTyping, isRecording, currentUser.id, otherUser.id]);
+
+    // Also listen for visibility changes (e.g. user comes back to tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        markUnreadAsSeen();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [messages, currentUser.id, otherUser.id]);
 
   const handleClickOutside = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
