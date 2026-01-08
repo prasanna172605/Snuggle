@@ -63,21 +63,9 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
       setLoading(false);
     });
 
-    // Mark as seen async when chat opens
-    const markSeen = async () => {
-      const msgs = await DBService.getMessages(currentUser.id, otherUser.id);
-      const unreadMessages = msgs.filter(m => m.senderId === otherUser.id && m.status !== 'seen');
-      if (unreadMessages.length > 0) {
-        const chatId = DBService.getChatId(currentUser.id, otherUser.id);
-        await DBService.markMessagesAsRead(chatId, currentUser.id);
-      }
-    }
-    markSeen();
-
     const handleStorageChange = (e: StorageEvent | Event) => {
       if (e.type === 'local-storage-update' || (e instanceof StorageEvent && e.key === 'snuggle_messages_v1')) {
         loadMessages();
-        markSeen();
       }
 
       if (e.type === 'local-storage-typing' || (e instanceof StorageEvent && e.key === 'snuggle_typing_v1')) {
@@ -130,7 +118,17 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOtherUserTyping, isRecording]);
+
+    // Mark messages as seen when new ones arrive and we are viewing them
+    const markUnreadAsSeen = async () => {
+      const unreadMessages = messages.filter(m => m.senderId === otherUser.id && m.status !== 'seen');
+      if (unreadMessages.length > 0) {
+        const chatId = DBService.getChatId(currentUser.id, otherUser.id);
+        await DBService.markMessagesAsRead(chatId, currentUser.id);
+      }
+    };
+    markUnreadAsSeen();
+  }, [messages, isOtherUserTyping, isRecording, currentUser.id, otherUser.id]);
 
   const handleClickOutside = (e: MouseEvent) => {
     const target = e.target as HTMLElement;

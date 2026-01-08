@@ -19,8 +19,9 @@ import {
     QueryConstraint,
     collectionGroup
 } from 'firebase/firestore';
-import { db, auth, storage, googleProvider, realtimeDb } from './firebase';
+import { db, auth, storage, googleProvider, realtimeDb, messaging } from './firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { getToken } from 'firebase/messaging';
 import { signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged, signOut, deleteUser as deleteFirebaseUser, createUserWithEmailAndPassword } from 'firebase/auth';
 import { onSnapshot } from 'firebase/firestore';
 import { ref as rtdbRef, set, onDisconnect, serverTimestamp as rtdbServerTimestamp, onValue, off } from 'firebase/database';
@@ -131,6 +132,31 @@ export class DBService {
     static async updateUserProfile(userId: string, updates: Partial<User>): Promise<void> {
         const userRef = doc(db, 'users', userId);
         await updateDoc(userRef, updates);
+    }
+
+    static async requestNotificationPermission(userId: string): Promise<boolean> {
+        try {
+            if (!messaging) return false;
+
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') return false;
+
+            const token = await getToken(messaging, {
+                vapidKey: "BF2s8YmX9lJ3_s6b_H3v4z0w5u6t8s9r0q_1n2o3p4" // Should ideally be in env
+            });
+
+            if (token) {
+                const userRef = doc(db, 'users', userId);
+                await updateDoc(userRef, {
+                    fcmTokens: arrayUnion(token)
+                });
+                console.log('Notification permission granted, token saved:', token);
+                return true;
+            }
+        } catch (error) {
+            console.error('Error requesting notification permission:', error);
+        }
+        return false;
     }
 
     static async searchUsers(searchTerm: string, maxResults: number = 20): Promise<User[]> {

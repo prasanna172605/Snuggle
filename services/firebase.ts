@@ -5,6 +5,7 @@ import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics, isSupported } from "firebase/analytics";
 import { getDatabase } from 'firebase/database';
+import { getMessaging } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCccZYjpK8uhRmjzUPrgu3eloASikNpmJc",
@@ -37,5 +38,18 @@ isSupported().then(supported => {
   }
 }).catch(console.error);
 
+// Enable messaging if supported
+let messaging: any;
+isSupported().then(supported => {
+  if (supported) {
+    try {
+      messaging = getMessaging(app);
+    } catch (e) {
+      console.warn('Messaging failed to init:', e);
+    }
+  }
+});
+
+export { messaging };
 export { analytics };
 console.log('Firebase initialized successfully');

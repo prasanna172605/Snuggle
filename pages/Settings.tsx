@@ -41,6 +41,9 @@ const Settings: React.FC<SettingsProps> = ({
   useEffect(() => {
     DBService.getSavedSessions().then(setSavedAccounts);
     setDarkMode(localStorage.getItem('snuggle_theme') === 'dark');
+    if ('Notification' in window) {
+      setPushEnabled(Notification.permission === 'granted');
+    }
   }, []);
 
   const handleSaveProfile = async () => {
@@ -253,10 +256,22 @@ const Settings: React.FC<SettingsProps> = ({
                 <div className="bg-yellow-50 dark:bg-yellow-900/30 p-2 rounded-full text-yellow-500">
                   <Bell className="w-5 h-5" />
                 </div>
-                <span className="font-semibold text-gray-900 dark:text-white text-sm">Notifications</span>
+                <div className="text-left">
+                  <p className="font-semibold text-gray-900 dark:text-white text-sm">Notifications</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400">Push notifications for new messages</p>
+                </div>
               </div>
               <button
-                onClick={() => setPushEnabled(!pushEnabled)}
+                onClick={async () => {
+                  if (!pushEnabled) {
+                    const granted = await DBService.requestNotificationPermission(currentUser.id);
+                    if (granted) setPushEnabled(true);
+                    else alert("Permission denied. Enable notifications in browser settings.");
+                  } else {
+                    setPushEnabled(false);
+                    // Ideally remove token from DB here too
+                  }
+                }}
                 className={`w-11 h-6 rounded-full transition-colors relative ${pushEnabled ? 'bg-snuggle-500' : 'bg-gray-200 dark:bg-gray-700'}`}
               >
                 <span className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${pushEnabled ? 'translate-x-5' : ''}`}></span>
