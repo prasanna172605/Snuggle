@@ -46,15 +46,23 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
+        console.log('[API] Looking up user:', receiverId);
+
         // 1. Get Receiver Tokens
         const userDoc = await db.collection('users').doc(receiverId).get();
 
+        console.log('[API] User exists:', userDoc.exists);
         if (!userDoc.exists) {
-            return res.status(404).json({ error: 'User not found' });
+            // List all users to debug
+            const allUsers = await db.collection('users').limit(10).get();
+            console.log('[API] Sample user IDs in database:', allUsers.docs.map(d => d.id));
+            return res.status(404).json({ error: 'User not found', requestedId: receiverId });
         }
 
         const userData = userDoc.data();
         const fcmTokens = userData?.fcmTokens;
+
+        console.log('[API] User found, tokens:', fcmTokens?.length || 0);
 
         if (!fcmTokens || !fcmTokens.length) {
             return res.status(200).json({ message: 'No tokens found for user' });
