@@ -80,7 +80,7 @@ export default async function handler(req, res) {
         };
 
         // 3. Send
-        const response = await messaging.sendMulticast(message);
+        const response = await messaging.sendEachForMulticast(message);
 
         // 4. Cleanup Invalid Tokens
         if (response.failureCount > 0) {
