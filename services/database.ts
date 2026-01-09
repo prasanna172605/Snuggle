@@ -142,7 +142,7 @@ export class DBService {
             if (permission !== 'granted') return false;
 
             const token = await getToken(messaging, {
-                vapidKey: "BF2s8YmX9lJ3_s6b_H3v4z0w5u6t8s9r0q_1n2o3p4" // Should ideally be in env
+                vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
             });
 
             if (token) {

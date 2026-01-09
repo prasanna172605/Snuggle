@@ -122,18 +122,26 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
     // Mark messages as seen when new ones arrive and we are viewing them
     const markUnreadAsSeen = async () => {
       // Only mark as seen if the page is visible
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible') {
+        console.log('[Chat] Page hidden, skipping markAsRead');
+        return;
+      }
 
+      console.log('[Chat] Checking for unread messages...');
       const unreadMessages = messages.filter(m => m.senderId === otherUser.id && m.status !== 'seen');
       if (unreadMessages.length > 0) {
+        console.log(`[Chat] Found ${unreadMessages.length} unread messages, marking as read.`);
         const chatId = DBService.getChatId(currentUser.id, otherUser.id);
         await DBService.markMessagesAsRead(chatId, currentUser.id);
+      } else {
+        console.log('[Chat] No unread messages found.');
       }
     };
     markUnreadAsSeen();
 
     // Also listen for visibility changes (e.g. user comes back to tab)
     const handleVisibilityChange = () => {
+      console.log('[Chat] Visibility changed:', document.visibilityState);
       if (document.visibilityState === 'visible') {
         markUnreadAsSeen();
       }
