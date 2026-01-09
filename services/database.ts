@@ -799,7 +799,7 @@ export class DBService {
             const senderName = senderProfile?.fullName || "New Message";
             const msgBody = messageData.type === 'text' ? messageData.text : `Sent a ${messageData.type}`;
 
-            fetch('/api/send-push', {
+            fetch('https://snuggle-seven.vercel.app/api/send-push', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
