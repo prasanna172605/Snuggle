@@ -136,25 +136,38 @@ export class DBService {
 
     static async requestNotificationPermission(userId: string): Promise<boolean> {
         try {
-            if (!messaging) return false;
+            console.log('[FCM] Starting token registration for user:', userId);
+            if (!messaging) {
+                console.error('[FCM] Messaging not initialized');
+                return false;
+            }
 
             const permission = await Notification.requestPermission();
+            console.log('[FCM] Notification permission:', permission);
             if (permission !== 'granted') return false;
 
+            console.log('[FCM] Getting FCM token with VAPID key:', import.meta.env.VITE_FIREBASE_VAPID_KEY?.substring(0, 20) + '...');
             const token = await getToken(messaging, {
                 vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
             });
 
             if (token) {
+                console.log('[FCM] Token received:', token.substring(0, 50) + '...');
+                console.log('[FCM] Saving to Firestore for user:', userId);
                 const userRef = doc(db, 'users', userId);
                 await updateDoc(userRef, {
                     fcmTokens: arrayUnion(token)
                 });
+                console.log('[FCM] ✅ Token successfully saved to Firestore!');
                 console.log('Notification permission granted, token saved:', token);
                 return true;
+            } else {
+                console.error('[FCM] No token received from getToken()');
             }
         } catch (error) {
-            console.error('Error requesting notification permission:', error);
+            console.error('[FCM] ❌ Error during token registration:', error);
+            console.error('[FCM] Error details:', error instanceof Error ? error.message : error);
+            console.error('[FCM] Full error object:', JSON.stringify(error, null, 2));
         }
         return false;
     }
