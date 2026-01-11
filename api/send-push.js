@@ -88,11 +88,24 @@ export default async function handler(req, res) {
                 title,
                 body,
             },
+            android: {
+                priority: 'high',
+                ttl: 0, // Immediate delivery or fail
+                notification: {
+                    priority: 'high',
+                    channelId: 'default'
+                }
+            },
             webpush: {
+                headers: {
+                    Urgency: 'high',
+                    TTL: '0'
+                },
                 notification: {
                     icon: icon || '/vite.svg',
                     badge: '/vite.svg',
-                    data: { url: url || '/' }
+                    data: { url: url || '/' },
+                    requireInteraction: true // Keep notification active until user clicks
                 },
                 fcmOptions: {
                     link: url || '/'

@@ -129,14 +129,11 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
         return;
       }
 
-      console.log('[Chat] Checking for unread messages...');
       const unreadMessages = messages.filter(m => m.senderId === otherUser.id && m.status !== 'seen');
       if (unreadMessages.length > 0) {
         console.log(`[Chat] Found ${unreadMessages.length} unread messages, marking as read.`);
         const chatId = DBService.getChatId(currentUser.id, otherUser.id);
         await DBService.markMessagesAsRead(chatId, currentUser.id);
-      } else {
-        console.log('[Chat] No unread messages found.');
       }
     };
     markUnreadAsSeen();

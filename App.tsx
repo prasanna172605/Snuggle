@@ -2,16 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import { User, ViewState } from './types';
 import { DBService } from './services/database';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import GoogleUsernameSetup from './pages/GoogleUsernameSetup';
-import Feed from './pages/Feed';
-import Messages from './pages/Messages';
-import Profile from './pages/Profile';
-import Chat from './pages/Chat';
-import Settings from './pages/Settings';
-import Create from './pages/Create';
-import Notifications from './pages/Notifications';
+// Lazy Load Pages for Performance
+const Login = React.lazy(() => import('./pages/Login'));
+const Signup = React.lazy(() => import('./pages/Signup'));
+const GoogleUsernameSetup = React.lazy(() => import('./pages/GoogleUsernameSetup'));
+const Feed = React.lazy(() => import('./pages/Feed'));
+const Messages = React.lazy(() => import('./pages/Messages'));
+const Profile = React.lazy(() => import('./pages/Profile'));
+const Chat = React.lazy(() => import('./pages/Chat'));
+const Settings = React.lazy(() => import('./pages/Settings'));
+const Create = React.lazy(() => import('./pages/Create'));
+const Notifications = React.lazy(() => import('./pages/Notifications'));
 import BottomNav from './components/BottomNav';
 import CallOverlay from './components/CallOverlay';
 import { CallProvider } from './context/CallContext';
@@ -38,6 +39,34 @@ const AppContent = ({
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
+    // Request permissions on launch (Default Permissions Logic)
+    const requestPermissions = async () => {
+      // 1. Notification
+      if ('Notification' in window && Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          DBService.requestNotificationPermission(currentUser.id); // Register token
+        }
+      }
+
+      // 2. Camera & Mic (for new users)
+      // We accept that this might fail if user doesn't interact, but we ask.
+      try {
+        // Only ask if not already granted (check permissions api if available, otherwise try getUserMedia)
+        // navigator.permissions.query({ name: 'camera' as any }) ... simpler to just try getUserMedia if we want "default enabled" behavior
+        // But doing this every time is annoying. Maybe check localStorage?
+        const hasAskedMedia = localStorage.getItem('snuggle_media_asked');
+        if (!hasAskedMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          stream.getTracks().forEach(t => t.stop());
+          localStorage.setItem('snuggle_media_asked', 'true');
+        }
+      } catch (e) {
+        console.log('Media permission skipped/denied');
+      }
+    };
+    requestPermissions();
+
     // Monitor notifications with realtime listener
     const unsubscribe = DBService.subscribeToNotifications(currentUser.id, (notifs) => {
       setUnreadCount(notifs.filter(n => !n.read).length);
@@ -178,7 +207,9 @@ const AppContent = ({
           </header>
         )}
         <main className={`flex-1 overflow-y-auto ${!isFullScreen ? 'pb-20' : ''}`}>
-          {renderContent()}
+          <React.Suspense fallback={<div className="h-full flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-snuggle-400" /></div>}>
+            {renderContent()}
+          </React.Suspense>
         </main>
         <CallOverlay />
         {!isFullScreen && (
@@ -309,11 +340,13 @@ const App = () => {
       );
     }
     return (
-      <Login
-        onLogin={handleLogin}
-        onNavigate={setAuthView}
-        onGoogleSetupNeeded={handleGoogleSetupNeeded}
-      />
+      <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-snuggle-50"><Loader2 className="w-8 h-8 animate-spin text-snuggle-500" /></div>}>
+        <Login
+          onLogin={handleLogin}
+          onNavigate={setAuthView}
+          onGoogleSetupNeeded={handleGoogleSetupNeeded}
+        />
+      </React.Suspense>
     );
   }
 
