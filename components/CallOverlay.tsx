@@ -104,7 +104,7 @@ const CallOverlay: React.FC = () => {
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              style={{ transform: 'scaleX(-1)' }}
+              style={{ transform: 'none' }}
               className="w-full h-full object-cover"
             />
           ) : (

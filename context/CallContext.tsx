@@ -82,7 +82,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
     };
 
     pc.ontrack = (event) => {
+      console.log('[WebRTC] Received track:', event.track.kind, 'Enabled:', event.track.enabled);
       if (event.streams && event.streams[0]) {
+        console.log('[WebRTC] Remote stream tracks:', event.streams[0].getTracks().map(t => `${t.kind}:${t.enabled}`));
         setRemoteStream(event.streams[0]);
       }
     };
@@ -92,6 +94,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
       if (pc.connectionState === 'connected') {
         // Start monitoring quality when connected
         startQualityMonitoring();
+        // Set start time if not already set
+        if (callStartTime.current === 0) {
+          callStartTime.current = Date.now();
+        }
       } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
         stopQualityMonitoring();
         endCall();
@@ -176,23 +182,23 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
   };
 
   // Start quality monitoring
-  const startQualityMonitoring = () => {
+  function startQualityMonitoring() {
     stopQualityMonitoring(); // Clear any existing interval
     qualityMonitorInterval.current = setInterval(monitorConnectionQuality, 2000); // Check every 2 seconds
     console.log('[Quality] Monitoring started');
-  };
-
+  }
   // Stop quality monitoring
-  const stopQualityMonitoring = () => {
+  function stopQualityMonitoring() {
     if (qualityMonitorInterval.current) {
       clearInterval(qualityMonitorInterval.current);
       qualityMonitorInterval.current = null;
       console.log('[Quality] Monitoring stopped');
     }
-  };
+  }
 
   const startCall = async (receiverId: string, type: CallType) => {
     if (!currentUser) return;
+    callStartTime.current = 0; // Reset timer
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: type === 'video',
@@ -430,33 +436,49 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
         participants: [currentUser.id, activeCall.userId],
         callerId: callInitiator.current
       }).catch(err => console.error('Error saving call history:', err));
-    }
-    cleanupCall();
-  };
+      cleanupCall();
+    };
+  }
 
-  const cleanupCall = () => {
+  function cleanupCall() {
+    if (activeCall) {
+      // Send end signal if we were in a call
+      // Only if locally active? No, endCall handles signal. cleanup is internal.
+    }
+
     stopQualityMonitoring(); // Stop quality monitoring
-    localStream?.getTracks().forEach(track => track.stop());
-    remoteStream?.getTracks().forEach(track => track.stop());
-    peerConnection.current?.close();
-    peerConnection.current = null;
-    setLocalStream(null);
+
+    if (localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+      setLocalStream(null);
+    }
+    remoteStream?.getTracks().forEach(track => track.stop()); // Keep this line
     setRemoteStream(null);
     setActiveCall(null);
     setIncomingCall(null);
     setIsMicMuted(false);
     setIsCameraOff(false);
+    setIsScreenSharing(false); // Reset screen share state
     setConnectionQuality('high'); // Reset quality
-    callStartTime.current = 0;
+    callStartTime.current = 0; // Reset timer
     callInitiator.current = '';
-  };
+    iceCandidatesQueue.current = []; // Reset ICE candidates queue
 
-  const toggleMic = () => {
+    if (peerConnection.current) {
+      peerConnection.current.close();
+      peerConnection.current = null;
+    }
+  }
+
+  function toggleMic() {
     if (localStream) {
-      localStream.getAudioTracks().forEach(track => track.enabled = !track.enabled);
+      localStream.getAudioTracks().forEach(track => {
+        track.enabled = !track.enabled;
+        console.log(`Audio track enabled: ${track.enabled}`); // Log audio track status
+      });
       setIsMicMuted(!isMicMuted);
     }
-  };
+  }
 
   const toggleCamera = () => {
     if (localStream) {
