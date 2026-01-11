@@ -38,17 +38,18 @@ isSupported().then(supported => {
   }
 }).catch(console.error);
 
-// Enable messaging if supported
+// Enable messaging if supported (Sync initialization attempt)
 let messaging: any;
-isSupported().then(supported => {
-  if (supported) {
-    try {
-      messaging = getMessaging(app);
-    } catch (e) {
-      console.warn('Messaging failed to init:', e);
-    }
+
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
+  try {
+    messaging = getMessaging(app);
+  } catch (e) {
+    console.warn('Messaging failed to init synchronously:', e);
   }
-});
+} else {
+  console.warn('Push Notifications not supported in this environment');
+}
 
 export { messaging };
 export { analytics };

@@ -82,8 +82,11 @@ export default async function handler(req, res) {
         }
 
         // 2. Prepare Payload
+        const uniqueTokens = [...new Set(fcmTokens)];
+        console.log('[API] Sending to', uniqueTokens.length, 'unique tokens (originals:', fcmTokens.length, ')');
+
         const message = {
-            tokens: fcmTokens,
+            tokens: uniqueTokens,
             notification: {
                 title,
                 body,

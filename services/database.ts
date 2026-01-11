@@ -1592,10 +1592,10 @@ export class DBService {
                         console.log('[Signal] Ignoring stale signal:', signal.type, signal.timestamp);
                     }
 
-                    // Cleanup signal after processing to prevent reprocessing on reload
-                    // clean up old signals logic could be here, but requiring write permission might be tricky
-                    // Just filtering is enough for the session.
-                    deleteDoc(change.doc.ref).catch(err => console.warn('Failed to delete signal:', err));
+                    // Cleanup: We DO NOT delete signals immediately because user might be on multiple devices.
+                    // If Device A deletes it, Device B (which might be the active one) won't receive it.
+                    // We rely on the timestamp filter (> 5 mins) to ignore old signals.
+                    // A backend scheduled function can clean up old signals later if needed.
                 }
             });
         });

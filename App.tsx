@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
+import { onMessage } from 'firebase/messaging';
+import { messaging } from './services/firebase';
 import { User, ViewState } from './types';
 import { DBService } from './services/database';
 // Lazy Load Pages for Performance
@@ -67,10 +69,25 @@ const AppContent = ({
     };
     requestPermissions();
 
-    // Monitor notifications with realtime listener
+    // Monitor notifications with realtime listener for DB
     const unsubscribe = DBService.subscribeToNotifications(currentUser.id, (notifs) => {
       setUnreadCount(notifs.filter(n => !n.read).length);
     });
+
+    // Foreground FCM listener (for Test Notification & Calls when app is open)
+    if (messaging) {
+      onMessage(messaging, (payload) => {
+        console.log('[App] Foreground push received:', payload);
+        const { title, body, icon } = payload.notification || {};
+        if (Notification.permission === 'granted') {
+          new Notification(title || 'Snuggle', {
+            body,
+            icon: icon || '/vite.svg'
+          });
+        }
+      });
+    }
+
     return () => unsubscribe();
   }, [currentUser]);
 
