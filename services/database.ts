@@ -1611,13 +1611,8 @@ export class DBService {
         actions?: any[]; // For call actions like Accept/Decline
     }): Promise<void> {
         try {
-            // Use window.location.origin dynamically if possible, or fallback to prod URL
-            // Ideally env var, but for now hardcode prod URL or use relative if same domain?
-            // Vercel function needs absolute URL if called from client side usually? No, relative works if same origin.
-            // But we might be on localhost calling prod API.
-            const apiUrl = window.location.hostname === 'localhost'
-                ? 'https://snuggle-seven.vercel.app/api/send-push' // Allow testing from localhost -> prod API
-                : '/api/send-push';
+            // Always use Vercel Production API for Push Notifications (CORS is enabled)
+            const apiUrl = 'https://snuggle-seven.vercel.app/api/send-push';
 
             await fetch(apiUrl, {
                 method: 'POST',
