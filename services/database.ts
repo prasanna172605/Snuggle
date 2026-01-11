@@ -1584,7 +1584,7 @@ export class DBService {
                 if (change.type === 'added') {
                     const signal = change.doc.data();
                     // Only process recent signals (within last 30 seconds)
-                    if (signal.timestamp && Date.now() - signal.timestamp < 30000) {
+                    if (signal.timestamp && Date.now() - signal.timestamp < 300000) {
                         console.log('[Signal] Received from Firestore:', signal.type);
                         callback(signal);
 
