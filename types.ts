@@ -38,8 +38,12 @@ export interface Message {
   text: string;
   timestamp: number;
   status: 'sent' | 'delivered' | 'seen';
-  type: 'text' | 'image' | 'audio';
+  type: 'text' | 'image' | 'audio' | 'call';
   reactions?: Record<string, string>; // userId -> emoji
+  // Call metadata (when type === 'call')
+  callType?: 'audio' | 'video';
+  callDuration?: number; // in seconds
+  callStatus?: 'completed' | 'missed' | 'declined';
 }
 
 export interface ChatSession {

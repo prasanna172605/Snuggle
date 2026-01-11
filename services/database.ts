@@ -804,28 +804,18 @@ export class DBService {
             [`unreadCounts.${messageData.receiverId}`]: increment(1)
         });
 
-        // Trigger Push Notification via Vercel Function
-        // Only if receiver is offline to save quota, or always? Always is safer for "background" checks.
-        // The service worker will handle deduping if app is open.
-        try {
-            const senderProfile = await this.getUserById(messageData.senderId);
-            const senderName = senderProfile?.fullName || "New Message";
-            const msgBody = messageData.type === 'text' ? messageData.text : `Sent a ${messageData.type}`;
+        // Trigger Push Notification
+        const senderProfile = await this.getUserById(messageData.senderId);
+        const senderName = senderProfile?.fullName || "New Message";
+        const msgBody = messageData.type === 'text' ? messageData.text : `Sent a ${messageData.type}`;
 
-            fetch('https://snuggle-seven.vercel.app/api/send-push', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    receiverId: messageData.receiverId,
-                    title: senderName,
-                    body: msgBody,
-                    url: '/messages',
-                    icon: senderProfile?.avatar
-                })
-            }).catch(e => console.warn('Push API trigger failed:', e));
-        } catch (err) {
-            console.warn('Error initiating push:', err);
-        }
+        await this.sendPushNotification({
+            receiverId: messageData.receiverId,
+            title: senderName,
+            body: msgBody,
+            url: '/messages',
+            icon: senderProfile?.avatar
+        });
 
         return { ...messageData, status: finalStatus };
     }
@@ -841,9 +831,22 @@ export class DBService {
         const querySnapshot = await getDocs(q);
         return querySnapshot.docs.map(doc => {
             const data = doc.data();
+            // Handle both number and Timestamp types - ensure we always get a number
+            let timestamp: number;
+            if (typeof data.timestamp === 'number') {
+                timestamp = data.timestamp;
+            } else if (data.timestamp && typeof data.timestamp.toMillis === 'function') {
+                timestamp = data.timestamp.toMillis();
+            } else if (data.timestamp && typeof data.timestamp.seconds === 'number') {
+                // Handle Firestore Timestamp object structure
+                timestamp = data.timestamp.seconds * 1000;
+            } else {
+                timestamp = Date.now(); // Fallback
+            }
+
             return {
                 ...data,
-                timestamp: (data.timestamp as Timestamp).toMillis()
+                timestamp
             } as import('../types').Message;
         }).reverse();
     }
@@ -866,9 +869,22 @@ export class DBService {
             (snapshot) => {
                 const messages = snapshot.docs.map(doc => {
                     const data = doc.data();
+                    // Handle both number and Timestamp types - ensure we always get a number
+                    let timestamp: number;
+                    if (typeof data.timestamp === 'number') {
+                        timestamp = data.timestamp;
+                    } else if (data.timestamp && typeof data.timestamp.toMillis === 'function') {
+                        timestamp = data.timestamp.toMillis();
+                    } else if (data.timestamp && typeof data.timestamp.seconds === 'number') {
+                        // Handle Firestore Timestamp object structure
+                        timestamp = data.timestamp.seconds * 1000;
+                    } else {
+                        timestamp = Date.now(); // Fallback
+                    }
+
                     return {
                         ...data,
-                        timestamp: (data.timestamp as Timestamp).toMillis()
+                        timestamp
                     } as import('../types').Message;
                 }).reverse();
                 callback(messages);
@@ -1275,7 +1291,341 @@ export class DBService {
         }
     }
 
+    // ===== WebRTC Call Methods =====
+
+    /**
+     * Create a new call document
+     */
+    static async createCall(
+        callId: string,
+        type: 'audio' | 'video',
+        initiator: string,
+        participants: string[]
+    ): Promise<void> {
+        try {
+            const callRef = doc(db, 'calls', callId);
+            await setDoc(callRef, {
+                type,
+                initiator,
+                participants,
+                status: 'ringing',
+                startTime: Date.now(),
+                createdAt: serverTimestamp()
+            });
+            console.log('[DB] Created call:', callId);
+        } catch (error) {
+            console.error('[DB] Error creating call:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update call status
+     */
+    static async updateCallStatus(
+        callId: string,
+        status: 'ringing' | 'active' | 'ended' | 'missed' | 'declined'
+    ): Promise<void> {
+        try {
+            const callRef = doc(db, 'calls', callId);
+            const updates: any = { status };
+
+            if (status === 'active') {
+                updates.startTime = Date.now();
+            } else if (status === 'ended') {
+                updates.endTime = Date.now();
+
+                // Calculate duration
+                const callDoc = await getDoc(callRef);
+                if (callDoc.exists()) {
+                    const data = callDoc.data();
+                    if (data.startTime) {
+                        updates.duration = Math.floor((Date.now() - data.startTime) / 1000); // in seconds
+                    }
+                }
+            }
+
+            await updateDoc(callRef, updates);
+            console.log('[DB] Updated call status:', callId, status);
+        } catch (error) {
+            console.error('[DB] Error updating call status:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Add participant to call
+     */
+    static async addCallParticipant(callId: string, userId: string): Promise<void> {
+        try {
+            const callRef = doc(db, 'calls', callId);
+            await updateDoc(callRef, {
+                participants: arrayUnion(userId)
+            });
+            console.log('[DB] Added participant to call:', userId);
+        } catch (error) {
+            console.error('[DB] Error adding participant:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Remove participant from call
+     */
+    static async removeCallParticipant(callId: string, userId: string): Promise<void> {
+        try {
+            const callRef = doc(db, 'calls', callId);
+            await updateDoc(callRef, {
+                participants: arrayRemove(userId)
+            });
+            console.log('[DB] Removed participant from call:', userId);
+        } catch (error) {
+            console.error('[DB] Error removing participant:', error);
+        }
+    }
+
+    /**
+     * Save call offer (WebRTC signaling)
+     */
+    static async saveCallOffer(
+        callId: string,
+        fromUserId: string,
+        toUserId: string,
+        offer: RTCSessionDescriptionInit
+    ): Promise<void> {
+        try {
+            const signalRef = doc(db, 'calls', callId, 'signals', `${fromUserId}_to_${toUserId}`);
+            await setDoc(signalRef, {
+                from: fromUserId,
+                to: toUserId,
+                offer,
+                timestamp: serverTimestamp()
+            }, { merge: true });
+            console.log('[DB] Saved call offer:', fromUserId, '→', toUserId);
+        } catch (error) {
+            console.error('[DB] Error saving offer:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Save call answer (WebRTC signaling)
+     */
+    static async saveCallAnswer(
+        callId: string,
+        fromUserId: string,
+        toUserId: string,
+        answer: RTCSessionDescriptionInit
+    ): Promise<void> {
+        try {
+            const signalRef = doc(db, 'calls', callId, 'signals', `${toUserId}_to_${fromUserId}`);
+            await updateDoc(signalRef, {
+                answer,
+                answerTimestamp: serverTimestamp()
+            });
+            console.log('[DB] Saved call answer:', fromUserId, '→', toUserId);
+        } catch (error) {
+            console.error('[DB] Error saving answer:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Save ICE candidate (WebRTC signaling)
+     */
+    static async saveIceCandidate(
+        callId: string,
+        fromUserId: string,
+        toUserId: string,
+        candidate: RTCIceCandidateInit
+    ): Promise<void> {
+        try {
+            const signalRef = doc(db, 'calls', callId, 'signals', `${fromUserId}_to_${toUserId}`);
+            await updateDoc(signalRef, {
+                iceCandidates: arrayUnion(candidate)
+            });
+            console.log('[DB] Saved ICE candidate:', fromUserId, '→', toUserId);
+        } catch (error) {
+            console.error('[DB] Error saving ICE candidate:', error);
+        }
+    }
+
+    /**
+     * Listen to call signals (WebRTC signaling)
+     */
+    static listenToCallSignals(
+        callId: string,
+        currentUserId: string,
+        callback: (signals: any[]) => void
+    ): () => void {
+        const signalsRef = collection(db, 'calls', callId, 'signals');
+        const q = query(signalsRef, where('to', '==', currentUserId));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const signals = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            callback(signals);
+        });
+
+        return unsubscribe;
+    }
+
+    /**
+     * Get call data
+     */
+    static async getCall(callId: string): Promise<any> {
+        try {
+            const callRef = doc(db, 'calls', callId);
+            const callDoc = await getDoc(callRef);
+
+            if (callDoc.exists()) {
+                return { id: callDoc.id, ...callDoc.data() };
+            }
+            return null;
+        } catch (error) {
+            console.error('[DB] Error getting call:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Save call history as a message in chat
+     */
+    static async saveCallHistory(
+        chatId: string,
+        callData: {
+            type: 'audio' | 'video';
+            duration?: number;
+            status: 'completed' | 'missed' | 'declined';
+            participants: string[];
+            callerId: string; // Who initiated the call
+        }
+    ): Promise<void> {
+        try {
+            const messageRef = doc(collection(db, 'chats', chatId, 'messages'));
+            await setDoc(messageRef, {
+                id: messageRef.id,
+                senderId: callData.callerId, // Person who initiated the call
+                receiverId: callData.participants.find(p => p !== callData.callerId) || '',
+                text: '', // Empty for call messages
+                type: 'call',
+                callType: callData.type,
+                callDuration: callData.duration || 0,
+                callStatus: callData.status,
+                status: 'seen', // Call messages don't have delivery status
+                timestamp: Timestamp.now(), // Use Firestore Timestamp
+                createdAt: serverTimestamp()
+            });
+
+            // Update chat last message
+            const chatRef = doc(db, 'chats', chatId);
+            await updateDoc(chatRef, {
+                lastMessage: `${callData.type === 'audio' ? '📞' : '📹'
+                    } ${callData.status === 'completed'
+                        ? `Call (${callData.duration}s)`
+                        : callData.status === 'missed'
+                            ? 'Missed call'
+                            : 'Declined call'
+                    } `,
+                lastMessageTime: Timestamp.now()
+            });
+
+            console.log('[DB] Saved call history to chat');
+        } catch (error) {
+            console.error('[DB] Error saving call history:', error);
+        }
+    }
+
+    // ===== WebRTC Signaling (BroadcastChannel + localStorage for cross-tab) =====
+
+    private static signalChannel: BroadcastChannel | null = null;
+
+    private static getSignalChannel(): BroadcastChannel {
+        if (!this.signalChannel) {
+            this.signalChannel = new BroadcastChannel('snuggle_webrtc_signals');
+        }
+        return this.signalChannel;
+    }
+
+    /**
+     * Send WebRTC signaling message via Firestore (works across devices/browsers)
+     */
+    static async sendSignal(message: any): Promise<void> {
+        try {
+            console.log('[Signal] Sending to Firestore:', message.type, 'from', message.senderId, 'to', message.receiverId);
+
+            // Save signal to Firestore with auto-generated ID
+            const signalRef = doc(collection(db, 'webrtc_signals'));
+            await setDoc(signalRef, {
+                ...message,
+                createdAt: serverTimestamp()
+            });
+
+            console.log('[Signal] Sent successfully to Firestore');
+        } catch (error) {
+            console.error('[Signal] Error sending signal:', error);
+        }
+    }
+
+    /**
+     * Subscribe to WebRTC signals for a specific user via Firestore
+     */
+    static subscribeToSignals(userId: string, callback: (signal: any) => void): () => void {
+        const signalsRef = collection(db, 'webrtc_signals');
+        const q = query(
+            signalsRef,
+            where('receiverId', '==', userId)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                    const signal = change.doc.data();
+                    // Only process recent signals (within last 30 seconds)
+                    if (signal.timestamp && Date.now() - signal.timestamp < 30000) {
+                        console.log('[Signal] Received from Firestore:', signal.type);
+                        callback(signal);
+
+                        // Delete the signal after processing to keep collection clean
+                        deleteDoc(change.doc.ref).catch(console.error);
+                    }
+                }
+            });
+        });
+
+        return unsubscribe;
+    }
 
 
 
+
+    static async sendPushNotification(data: {
+        receiverId: string;
+        title: string;
+        body: string;
+        url?: string;
+        icon?: string;
+        type?: 'message' | 'call';
+        actions?: any[]; // For call actions like Accept/Decline
+    }): Promise<void> {
+        try {
+            // Use window.location.origin dynamically if possible, or fallback to prod URL
+            // Ideally env var, but for now hardcode prod URL or use relative if same domain?
+            // Vercel function needs absolute URL if called from client side usually? No, relative works if same origin.
+            // But we might be on localhost calling prod API.
+            const apiUrl = window.location.hostname === 'localhost'
+                ? 'https://snuggle-seven.vercel.app/api/send-push' // Allow testing from localhost -> prod API
+                : '/api/send-push';
+
+            await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        } catch (error) {
+            console.warn('[DB] Failed to send push notification:', error);
+        }
+    }
 }

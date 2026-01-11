@@ -1,5 +1,5 @@
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue, FieldPath } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 
 // Initialize Firebase Admin
@@ -49,13 +49,26 @@ export default async function handler(req, res) {
         console.log('[API] Looking up user:', receiverId);
 
         // 1. Get Receiver Tokens
-        const userDoc = await db.collection('users').doc(receiverId).get();
+        // WORKAROUND: Both doc().get() and where() queries are failing in Vercel
+        // So we'll scan all users to find the right one
+        const cleanReceiverId = receiverId.trim();
+        console.log('[API] Scanning all users to find:', cleanReceiverId, '(length:', cleanReceiverId.length, ')');
+        const allUsersSnapshot = await db.collection('users').get();
+        let userDoc = null;
 
-        console.log('[API] User exists:', userDoc.exists);
-        if (!userDoc.exists) {
-            // List all users to debug
-            const allUsers = await db.collection('users').limit(10).get();
-            console.log('[API] Sample user IDs in database:', allUsers.docs.map(d => d.id));
+        for (const doc of allUsersSnapshot.docs) {
+            const docId = doc.id.trim();
+            console.log('[API] Comparing:', docId, '(length:', docId.length, ') with', cleanReceiverId);
+            if (docId === cleanReceiverId) {
+                userDoc = doc;
+                console.log('[API] Found user by scanning!');
+                break;
+            }
+        }
+
+        if (!userDoc) {
+            console.log('[API] User not found after scanning', allUsersSnapshot.docs.length, 'users');
+            console.log('[API] Sample user IDs:', allUsersSnapshot.docs.slice(0, 10).map(d => d.id));
             return res.status(404).json({ error: 'User not found', requestedId: receiverId });
         }
 

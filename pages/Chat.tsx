@@ -4,6 +4,8 @@ import { User, Message } from '../types';
 import { DBService } from '../services/database';
 import { useCall } from '../context/CallContext';
 import CameraCapture from '../components/CameraCapture';
+import CallButton from '../components/CallButton';
+import CallHistoryMessage from '../components/CallHistoryMessage';
 import { ArrowLeft, Phone, Video, Send, Image as ImageIcon, Smile, Check, CheckCheck, Mic, Trash2, Camera, Trash } from 'lucide-react';
 
 interface ChatProps {
@@ -403,11 +405,11 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
             {isOtherUserTyping ? 'typing...' : (isOtherUserOnline ? 'Active now' : 'Offline')}
           </p>
         </div>
-        {/* Placeholder for video/call icons if needed */}
-        <div className="flex gap-1">
-          <button className="p-2 rounded-full hover:bg-white/10 text-white/70 transition-colors"><Video className="w-5 h-5" /></button>
-          <button className="p-2 rounded-full hover:bg-white/10 text-white/70 transition-colors"><Phone className="w-5 h-5" /></button>
-        </div>
+        {/* Call Buttons */}
+        <CallButton
+          onAudioCall={() => startCall(otherUser.id, 'audio')}
+          onVideoCall={() => startCall(otherUser.id, 'video')}
+        />
       </div>
 
       {/* Chat Area */}
@@ -437,6 +439,22 @@ const Chat: React.FC<ChatProps> = ({ currentUser, otherUser, onBack }) => {
               });
             }
             const reactionEntries = Object.entries(reactionCounts);
+
+            // Render call history message if type is 'call' (BEFORE accessing msg.text)
+            if (msg.type === 'call') {
+              return (
+                <div key={msg.id} className="w-full my-1">
+                  <CallHistoryMessage
+                    callType={msg.callType || 'audio'}
+                    duration={msg.callDuration || 0}
+                    timestamp={msg.timestamp}
+                    status={msg.callStatus || 'completed'}
+                    isOutgoing={isMe}
+                    onCallBack={() => startCall(otherUser.id, msg.callType || 'audio')}
+                  />
+                </div>
+              );
+            }
 
             const isVideo = msg.text.startsWith('data:video');
 
