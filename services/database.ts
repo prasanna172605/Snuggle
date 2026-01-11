@@ -1583,14 +1583,19 @@ export class DBService {
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'added') {
                     const signal = change.doc.data();
-                    // Only process recent signals (within last 30 seconds)
-                    if (signal.timestamp && Date.now() - signal.timestamp < 300000) {
+                    // Client-side filter: Ignore signals older than 5 minutes
+                    // This avoids index requirements and processes only fresh signals
+                    if (signal.timestamp && signal.timestamp > Date.now() - 300000) {
                         console.log('[Signal] Received from Firestore:', signal.type);
                         callback(signal);
-
-                        // Delete the signal after processing to keep collection clean
-                        deleteDoc(change.doc.ref).catch(console.error);
+                    } else {
+                        console.log('[Signal] Ignoring stale signal:', signal.type, signal.timestamp);
                     }
+
+                    // Cleanup signal after processing to prevent reprocessing on reload
+                    // clean up old signals logic could be here, but requiring write permission might be tricky
+                    // Just filtering is enough for the session.
+                    deleteDoc(change.doc.ref).catch(err => console.warn('Failed to delete signal:', err));
                 }
             });
         });

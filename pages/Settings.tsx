@@ -278,6 +278,36 @@ const Settings: React.FC<SettingsProps> = ({
               </button>
             </div>
 
+            {/* TEST NOTIFICATION BUTTON */}
+            {pushEnabled && (
+              <button
+                onClick={async () => {
+                  try {
+                    console.log('Testing push notification...');
+                    await DBService.sendPushNotification({
+                      receiverId: currentUser.id,
+                      title: "Test Notification",
+                      body: "If you see this immediately, High Priority is working! 🚀",
+                      url: "/settings",
+                      icon: currentUser.avatar
+                    });
+                    alert("Test sent! Check system tray.");
+                  } catch (e: any) {
+                    alert("Error sending test: " + e.message);
+                  }
+                }}
+                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-dark-border transition-colors border-t border-gray-100 dark:border-gray-800"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-50 dark:bg-blue-900/30 p-2 rounded-full text-blue-500">
+                    <Bell className="w-5 h-5" />
+                  </div>
+                  <span className="font-semibold text-gray-900 dark:text-white text-sm">Send Test Notification</span>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-300" />
+              </button>
+            )}
+
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
                 <div className="bg-gray-100 dark:bg-gray-700/50 p-2 rounded-full text-gray-600 dark:text-gray-300">
