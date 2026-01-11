@@ -52,28 +52,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
   useEffect(() => {
     if (!currentUser) return;
 
-    const handleSignaling = (e: Event) => {
-      const storedEvent = localStorage.getItem('snuggle_event_signaling');
-      if (!storedEvent) return;
-
-      const data: SignalingMessage = JSON.parse(storedEvent);
-      // Ignore old events
-      if (Date.now() - data.timestamp > 5000) return;
-
-      // Handle events destined for us
-      if (data.receiverId === currentUser.id) {
-        handleSignalMessage(data);
-      }
-    };
-
-    window.addEventListener('local-storage-signaling', handleSignaling);
-    window.addEventListener('storage', handleSignaling);
+    console.log('[CallContext] Subscribing to Firestore signals for:', currentUser.id);
+    const unsubscribe = DBService.subscribeToSignals(currentUser.id, (signal) => {
+      console.log('[CallContext] Received signal:', signal.type);
+      handleSignalMessage(signal);
+    });
 
     return () => {
-      window.removeEventListener('local-storage-signaling', handleSignaling);
-      window.removeEventListener('storage', handleSignaling);
+      console.log('[CallContext] Unsubscribing from signals');
+      unsubscribe();
     };
-  }, [currentUser, activeCall]);
+  }, [currentUser]);
 
   const createPeerConnection = () => {
     if (peerConnection.current) return peerConnection.current;
