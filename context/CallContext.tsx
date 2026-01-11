@@ -303,7 +303,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
         const chatId = [currentUser.id, activeCall.userId].sort().join('_');
         await DBService.saveCallHistory(chatId, {
           type: activeCall.type,
-          duration: Math.round((Date.now() - callStartTime.current) / 1000),
+          duration: callStartTime.current > 0 ? Math.round((Date.now() - callStartTime.current) / 1000) : 0,
           status: 'completed',
           participants: [currentUser.id, activeCall.userId],
           callerId: callInitiator.current
@@ -431,7 +431,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
       const chatId = [currentUser.id, activeCall.userId].sort().join('_');
       DBService.saveCallHistory(chatId, {
         type: activeCall.type,
-        duration: Math.round((Date.now() - callStartTime.current) / 1000),
+        duration: callStartTime.current > 0 ? Math.round((Date.now() - callStartTime.current) / 1000) : 0,
         status: 'completed',
         participants: [currentUser.id, activeCall.userId],
         callerId: callInitiator.current
