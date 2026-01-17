@@ -30,6 +30,60 @@ const LoadingFallback = () => (
   </div>
 );
 
+// Wrapper for Chat to handle URL params
+const ChatWrapper = ({ currentUser }: { currentUser: User }) => {
+  const { userId } = useParams<{ userId: string }>();
+  const navigate = useNavigate();
+  const [otherUser, setOtherUser] = React.useState<User | null>(null);
+
+  React.useEffect(() => {
+    if (userId) {
+      DBService.getUserById(userId).then(user => {
+        if (user) setOtherUser(user);
+      });
+    }
+  }, [userId]);
+
+  if (!otherUser) return <LoadingFallback />;
+  return <Chat currentUser={currentUser} otherUser={otherUser} onBack={() => navigate(-1)} />;
+};
+
+// Wrapper for Create to handle navigation
+const CreateWrapper = ({ currentUser }: { currentUser: User }) => {
+  const navigate = useNavigate();
+  return <Create currentUser={currentUser} onNavigate={() => navigate('/')} />;
+};
+
+// Wrapper for Settings to handle back navigation 
+const SettingsWrapper = ({
+  currentUser,
+  onLogout,
+  onUpdateUser,
+  onDeleteAccount,
+  onSwitchAccount,
+  onAddAccount
+}: {
+  currentUser: User;
+  onLogout: () => void;
+  onUpdateUser: (user: User) => void;
+  onDeleteAccount: () => void;
+  onSwitchAccount: (userId: string) => void;
+  onAddAccount: () => void;
+}) => {
+  const navigate = useNavigate();
+  return (
+    <Settings
+      currentUser={currentUser}
+      onBack={() => navigate(-1)}
+      onLogout={onLogout}
+      onUpdateUser={onUpdateUser}
+      onDeleteAccount={onDeleteAccount}
+      onSwitchAccount={onSwitchAccount}
+      onAddAccount={onAddAccount}
+    />
+  );
+};
+
 const AppContent = ({
   currentUser,
   onLogout,
@@ -106,15 +160,15 @@ const AppContent = ({
           <Routes>
             <Route path="/" element={<Feed currentUser={currentUser} onUserClick={(userId) => navigate(`/profile/${userId}`)} />} />
             <Route path="/messages" element={<Messages currentUser={currentUser} onChatSelect={(user) => navigate(`/chat/${user.id}`)} onUserClick={(userId) => navigate(`/profile/${userId}`)} />} />
-            <Route path="/chat/:userId" element={<Chat currentUser={currentUser} />} />
+            <Route path="/chat/:userId" element={<ChatWrapper currentUser={currentUser} />} />
             <Route path="/profile" element={<Profile user={currentUser} currentUser={currentUser} isOwnProfile={true} onLogout={onLogout} />} />
             <Route path="/profile/:userId" element={<Profile currentUser={currentUser} isOwnProfile={false} />} />
             <Route path="/circles" element={<Circles />} />
             <Route path="/circles/invites" element={<CircleInvites />} />
             <Route path="/circles/add" element={<AddToCircle />} />
-            <Route path="/create" element={<Create currentUser={currentUser} />} />
+            <Route path="/create" element={<CreateWrapper currentUser={currentUser} />} />
             <Route path="/notifications" element={<Notifications currentUser={currentUser} onUserClick={(userId) => navigate(`/profile/${userId}`)} />} />
-            <Route path="/settings" element={<Settings currentUser={currentUser} onLogout={onLogout} onUpdateUser={onUpdateUser} onDeleteAccount={onDeleteAccount} onSwitchAccount={onSwitchAccount} onAddAccount={onAddAccount} />} />
+            <Route path="/settings" element={<SettingsWrapper currentUser={currentUser} onLogout={onLogout} onUpdateUser={onUpdateUser} onDeleteAccount={onDeleteAccount} onSwitchAccount={onSwitchAccount} onAddAccount={onAddAccount} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
