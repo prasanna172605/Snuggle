@@ -72,6 +72,7 @@ const AppContent = ({
     };
     requestPermissions();
 
+    if (!currentUser?.id) return;
     const unsubscribe = DBService.subscribeToNotifications(currentUser.id, (notifs) => {
       setUnreadCount(notifs.filter(n => !n.read).length);
     });
