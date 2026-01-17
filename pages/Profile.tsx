@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { User, Post } from '../types';
-import { Settings, Grid, Edit3, Share2, MessageCircle } from 'lucide-react';
+import { Settings, Grid, Edit3, Share2, MessageCircle, Users2, Users, UserPlus } from 'lucide-react';
 import { DBService } from '../services/database';
 
 interface ProfileProps {
@@ -97,23 +97,58 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
 
                 {/* Action Bar */}
                 <div className="col-span-2 bg-white dark:bg-dark-card rounded-bento p-2 shadow-sm transition-colors border border-transparent dark:border-dark-border">
-                    <div className="flex gap-2">
-                        {isOwnProfile ? (
-                            <>
-                                <button className="flex-1 bg-black dark:bg-white text-white dark:text-black py-4 rounded-[24px] font-bold text-sm hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
-                                    <Edit3 className="w-4 h-4" /> Edit Profile
+                    {isOwnProfile ? (
+                        <div className="space-y-2">
+                            {/* Circle Action Buttons - New */}
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    onClick={() => navigate('/circles/add')}
+                                    className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:shadow-md transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Users2 className="w-4 h-4" />
+                                    Expand Circle
                                 </button>
-                                <button className="flex-1 bg-gray-100 dark:bg-dark-border text-gray-900 dark:text-white py-4 rounded-[24px] font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex items-center justify-center gap-2">
-                                    <Share2 className="w-4 h-4" /> Share
+                                <button
+                                    onClick={() => navigate('/my-circle')}
+                                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:shadow-md transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Users className="w-4 h-4" />
+                                    My Circle
                                 </button>
-                            </>
-                        ) : (
-                            <button className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500 text-white py-4 rounded-[24px] font-bold text-sm hover:shadow-md transition-shadow flex items-center justify-center gap-2">
-                                <MessageCircle className="w-5 h-5" />
+                            </div>
+
+                            {/* Edit & Share Buttons */}
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    className="bg-gray-100 dark:bg-dark-bg text-gray-900 dark:text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-gray-200 dark:hover:bg-dark-border transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <Edit3 className="w-4 h-4" />
+                                    Edit Profile
+                                </button>
+                                <button
+                                    className="bg-gray-100 dark:bg-dark-bg text-gray-900 dark:text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-gray-200 dark:hover:bg-dark-border transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <Share2 className="w-4 h-4" />
+                                    Share Profile
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                className="bg-cyan-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-cyan-600 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <MessageCircle className="w-4 h-4" />
                                 Message
                             </button>
-                        )}
-                    </div>
+                            <button
+                                className="bg-purple-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-purple-600 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <UserPlus className="w-4 h-4" />
+                                Add to Circle
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Posts Header */}
