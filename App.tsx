@@ -20,7 +20,8 @@ const Notifications = React.lazy(() => import('./pages/Notifications'));
 const Circles = React.lazy(() => import('./pages/Circles'));
 const CircleInvites = React.lazy(() => import('./pages/CircleInvites'));
 const AddToCircle = React.lazy(() => import('./pages/AddToCircle'));
-import BottomNav from './components/BottomNav';
+const MyCircle = React.lazy(() => import('./pages/MyCircle'));
+const BottomNav = React.lazy(() => import('./components/BottomNav'));
 import CallOverlay from './components/CallOverlay';
 import { CallProvider } from './context/CallContext';
 
@@ -166,6 +167,7 @@ const AppContent = ({
             <Route path="/circles" element={<Circles />} />
             <Route path="/circles/invites" element={<CircleInvites />} />
             <Route path="/circles/add" element={<AddToCircle />} />
+            <Route path="/my-circle" element={<MyCircle />} />
             <Route path="/create" element={<CreateWrapper currentUser={currentUser} />} />
             <Route path="/notifications" element={<Notifications currentUser={currentUser} onUserClick={(userId) => navigate(`/profile/${userId}`)} />} />
             <Route path="/settings" element={<SettingsWrapper currentUser={currentUser} onLogout={onLogout} onUpdateUser={onUpdateUser} onDeleteAccount={onDeleteAccount} onSwitchAccount={onSwitchAccount} onAddAccount={onAddAccount} />} />
