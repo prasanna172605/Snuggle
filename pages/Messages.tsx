@@ -66,7 +66,12 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
     };
 
     useEffect(() => {
-        // Real-time subscription for inbox - enables live updates without refresh
+        if (!currentUser?.id) {
+            console.log('[Messages] No currentUser.id, skipping chats subscription');
+            return;
+        }
+
+        // Real-time subscription for inbox...
         const unsubscribe = DBService.subscribeToUserChats(currentUser.id, (chats) => {
             if (chats.length > 0) {
                 const users: User[] = [];
