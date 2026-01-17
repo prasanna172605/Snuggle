@@ -15,6 +15,11 @@ const Notifications: React.FC<NotificationsProps> = ({ currentUser, onUserClick 
     const sendersRef = useRef<Record<string, User>>({});
 
     useEffect(() => {
+        if (!currentUser?.id) {
+            console.log('[Notifications] No currentUser.id, skipping subscription');
+            return;
+        }
+
         const handleNotifsUpdate = async (notifs: Notification[]) => {
             setNotifications(notifs);
 
