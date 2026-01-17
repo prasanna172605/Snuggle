@@ -100,6 +100,9 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
                 });
                 setChatUsers(users);
                 setLastMessages(msgs);
+            } else {
+                setChatUsers([]);
+                setLastMessages({});
             }
             setLoading(false);
         });
