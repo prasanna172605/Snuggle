@@ -82,7 +82,10 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
     };
 
     const handleSendInvite = async (circleType: string) => {
-        if (!currentUser || !currentUser.id || !userId) return;
+        if (!currentUser || !userId) {
+            alert('Error: Missing user information');
+            return;
+        }
 
         setSendingInvite(true);
         try {
