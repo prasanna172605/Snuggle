@@ -94,7 +94,7 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
 
             await checkPendingStatus();
             setShowCircleModal(false);
-            alert(`Invited ${user.fullName} to your ${circleType} circle!`);
+            alert(`Invited ${user?.fullName || 'user'} to your ${circleType} circle!`);
         } catch (error: any) {
             alert(error.message || 'Failed to send invite');
         } finally {

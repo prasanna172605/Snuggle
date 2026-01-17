@@ -1944,7 +1944,7 @@ export class CircleService {
         const invites: Array<{ membership: any; sender: User | null }> = [];
 
         for (const docSnap of snapshot.docs) {
-            const membership = { id: docSnap.id, ...docSnap.data() };
+            const membership = { id: docSnap.id, ...docSnap.data() } as any;
             const sender = await DBService.getUserById(membership.ownerId);
             invites.push({ membership, sender });
         }
