@@ -18,20 +18,22 @@ export default function Circles() {
     useEffect(() => {
         if (!currentUserId) return;
 
-        const loadCircles = async () => {
-            try {
-                const circles = await CircleService.getMyCircles(currentUserId);
-                setInnerCircle(circles.inner);
-                setCloseCircle(circles.close);
-                setOuterCircle(circles.outer);
+        // Real-time subscription to circle changes
+        const unsubscribeCircles = CircleService.subscribeToMyCircles(currentUserId, (circles) => {
+            setInnerCircle(circles.inner);
+            setCloseCircle(circles.close);
+            setOuterCircle(circles.outer);
+            setLoading(false); // Set loading to false once initial data is received
+        });
 
-                const invites = await CircleService.getPendingInvites(currentUserId);
-                setPendingCount(invites.length);
-            } catch (error) {
-                console.error('Failed to load circles:', error);
-            } finally {
-                setLoading(false);
-            }
+        // Real-time subscription for pending invites
+        const unsubscribeInvites = CircleService.subscribeToPendingInvites(currentUserId, (invites) => {
+            setPendingCount(invites.length);
+        });
+
+        return () => {
+            unsubscribeCircles();
+            unsubscribeInvites();
         };
 
         loadCircles();
