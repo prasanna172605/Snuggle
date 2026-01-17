@@ -35,7 +35,7 @@ export default function CircleInvites() {
 
         setProcessingId(membershipId);
         try {
-            await CircleService.approveCircleInvite({ membershipId, currentUserId });
+            await DBService.approveCircleInvite({ membershipId, currentUserId });
             setInvites((prev) => prev.filter((inv) => inv.membership.id !== membershipId));
         } catch (error: any) {
             console.error('Failed to approve invite:', error);
