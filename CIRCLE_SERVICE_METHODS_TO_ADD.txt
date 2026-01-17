@@ -1,0 +1,54 @@
+// Add these methods to CircleService after the getPendingInvites method
+
+/**
+ * Get pending invites sent by the user (as owner)
+ */
+static async getPendingInvitesSent(ownerId: string): Promise<Array<{ membership: any; member: User | null }>> {
+    const q = query(
+        collection(db, 'circle_memberships'),
+        where('ownerId', '==', ownerId),
+        where('status', '==', 'pending')
+    );
+
+    const querySnapshot = await getDocs(q);
+    const results = await Promise.all(
+        querySnapshot.docs.map(async (doc) => {
+            const membership = { id: doc.id, ...doc.data() };
+            const member = await DBService.getUserById(membership.memberId);
+            return { membership, member };
+        })
+    );
+
+    return results;
+}
+
+/**
+ * Revoke a circle invite (for the sender/owner)
+ */
+static async revokeCircleInvite(params: {
+    membershipId: string;
+    currentUserId: string;
+}): Promise<void> {
+    const { membershipId, currentUserId } = params;
+
+    const membershipRef = doc(db, 'circle_memberships', membershipId);
+    const membershipDoc = await getDoc(membershipRef);
+
+    if (!membershipDoc.exists()) {
+        throw new Error('Invite not found');
+    }
+
+    const membership = membershipDoc.data();
+
+    // Only the owner can revoke
+    if (membership.ownerId !== currentUserId) {
+        throw new Error('Only the invite sender can revoke');
+    }
+
+    // Can only revoke pending invites
+    if (membership.status !== 'pending') {
+        throw new Error('Can only revoke pending invites');
+    }
+
+    await deleteDoc(membershipRef);
+}

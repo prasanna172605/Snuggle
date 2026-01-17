@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { User, Post } from '../types';
 import { Settings, Grid, Edit3, Share2, MessageCircle, Users2, Users, UserPlus } from 'lucide-react';
-import { DBService } from '../services/database';
+import { DBService, CircleService } from '../services/database';
 
 interface ProfileProps {
     user?: User;

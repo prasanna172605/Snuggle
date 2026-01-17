@@ -1928,7 +1928,7 @@ export class CircleService {
     }
 
     /**
-     * Get pending invites sent to me
+     * Get pending invites sent TO me
      */
     static async getPendingInvites(userId: string): Promise<Array<{
         membership: any;
@@ -1944,12 +1944,42 @@ export class CircleService {
         const invites: Array<{ membership: any; sender: User | null }> = [];
 
         for (const docSnap of snapshot.docs) {
-            const membership = docSnap.data();
+            const membership = { id: docSnap.id, ...docSnap.data() };
             const sender = await DBService.getUserById(membership.ownerId);
             invites.push({ membership, sender });
         }
 
         return invites;
+    }
+
+    /**
+ * Get pending invites sent by user
+ */
+    static async getPendingInvitesSent(ownerId: string) {
+        const q = query(
+            collection(db, 'circle_memberships'),
+            where('ownerId', '==', ownerId),
+            where('status', '==', 'pending')
+        );
+        const docs = await getDocs(q);
+        return await Promise.all(
+            docs.docs.map(async (doc) => ({
+                membership: { id: doc.id, ...doc.data() },
+                member: await DBService.getUserById(doc.data().memberId)
+            }))
+        );
+    }
+
+    /**
+     * Revoke pending invite
+     */
+    static async revokeCircleInvite(params: { membershipId: string; currentUserId: string }) {
+        const ref = doc(db, 'circle_memberships', params.membershipId);
+        const snap = await getDoc(ref);
+        if (!snap.exists()) throw new Error('Not found');
+        if (snap.data().ownerId !== params.currentUserId) throw new Error('Unauthorized');
+        if (snap.data().status !== 'pending') throw new Error('Only pending');
+        await deleteDoc(ref);
     }
 
     /**
