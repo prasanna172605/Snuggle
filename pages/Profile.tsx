@@ -255,7 +255,7 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
                     <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[2rem] p-6 space-y-4 animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="text-center">
                             <h3 className="text-xl font-bold text-gray-900 dark:text-white">Add to Circle</h3>
-                            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Choose where to add {user.fullName}</p>
+                            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Choose where to add {user?.fullName || 'this user'}</p>
                         </div>
 
                         <div className="space-y-3 pt-2">
