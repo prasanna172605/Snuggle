@@ -1692,46 +1692,45 @@ export class CircleService {
 
         // Create the membership
         const membershipRef = doc(collection(db, 'circle_memberships'));
-        await setDoc(membershipRef, {
+        const membership = {
             id: membershipRef.id,
             ownerId,
             memberId,
             circleType,
             status: 'pending', // All invites require approval
             createdAt: Date.now()
-        });
 
         // Send notification to the invited user
         await DBService.createNotification({
-            userId: memberId,
-            senderId: ownerId,
-            type: 'circle_invite',
-            text: `invited you to their ${circleType} circle`
-        });
-
-        // Trigger push notification
-        const owner = await DBService.getUserById(ownerId);
-        if (owner) {
-            await DBService.sendPushNotification({
-                receiverId: memberId,
-                title: 'Circle Invite',
-                body: `${owner.fullName} invited you to their ${circleType} circle`,
-                data: {
-                    type: 'circle_invite',
-                    ownerId,
-                    circleType
-                }
+                userId: memberId,
+                senderId: ownerId,
+                type: 'circle_invite',
+                text: `invited you to their ${circleType} circle`
             });
+
+            // Trigger push notification
+            const owner = await DBService.getUserById(ownerId);
+            if(owner) {
+                await DBService.sendPushNotification({
+                    receiverId: memberId,
+                    title: 'Circle Invite',
+                    body: `${owner.fullName} invited you to their ${circleType} circle`,
+                    data: {
+                        type: 'circle_invite',
+                        ownerId,
+                        circleType
+                    }
+                });
+            }
         }
-    }
 
     /**
      * Approve a pending circle invite
      */
     static async approveCircleInvite(params: {
-        membershipId: string;
-        currentUserId: string;
-    }): Promise<void> {
+            membershipId: string;
+            currentUserId: string;
+        }): Promise<void> {
         const { membershipId, currentUserId } = params;
 
         const membershipRef = doc(db, 'circle_memberships', membershipId);
