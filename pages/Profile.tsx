@@ -82,7 +82,7 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
     };
 
     const handleSendInvite = async (circleType: string) => {
-        if (!currentUser || !userId) return;
+        if (!currentUser || !currentUser.id || !userId) return;
 
         setSendingInvite(true);
         try {
