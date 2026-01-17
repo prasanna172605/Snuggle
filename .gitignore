@@ -8,6 +8,7 @@
 # Firebase
 .firebase/
 .firebaserc
+snuggle-73465-firebase-adminsdk-fbsvc-9296570032.json
 
 # Build outputs
 dist/

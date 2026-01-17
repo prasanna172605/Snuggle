@@ -139,3 +139,17 @@ export interface CoreContent {
     shares: number;
   };
 }
+
+export enum ViewState {
+  LOGIN = 'LOGIN',
+  SIGNUP = 'SIGNUP',
+  FEED = 'FEED',
+  PROFILE = 'PROFILE',
+  SETTINGS = 'SETTINGS',
+  MESSAGES = 'MESSAGES',
+  CREATE = 'CREATE',
+  NOTIFICATIONS = 'NOTIFICATIONS',
+  SEARCH = 'SEARCH',
+  EDIT_PROFILE = 'EDIT_PROFILE',
+  GOOGLE_USERNAME = 'GOOGLE_USERNAME'
+}
