@@ -110,7 +110,8 @@ service cloud.firestore {
       allow update: if request.auth != null && 
         (resource.data.ownerId == request.auth.uid || // Owner can move
          (resource.data.memberId == request.auth.uid && // Member can approve  
-          request.resource.data.keys().hasOnly(['status', 'updatedAt'])));
+          request.resource.data.status != resource.data.status && // Status is changing
+          request.resource.data.get('status', '') in ['approved', 'rejected'])); // To approved or rejected
       
       // Delete: Only owner can delete
       allow delete: if request.auth != null && 
