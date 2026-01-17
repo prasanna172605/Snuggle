@@ -81,7 +81,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
   };
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      console.log('[CallContext] No currentUser yet, skipping signal subscription');
+      return;
+    }
 
     console.log('[CallContext] Subscribing to Firestore signals for:', currentUser.id);
     const unsubscribe = DBService.subscribeToSignals(currentUser.id, (signal) => {
