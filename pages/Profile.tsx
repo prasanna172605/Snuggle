@@ -21,29 +21,38 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
 
     useEffect(() => {
         const loadProfile = async () => {
-            if (userId && !isOwnProfile) {
-                const fetchedUser = await DBService.getUserById(userId);
-                setUser(fetchedUser);
+            try {
+                if (userId && !isOwnProfile) {
+                    const fetchedUser = await DBService.getUserById(userId);
+                    setUser(fetchedUser);
 
-                // Check for pending invite
-                if (currentUser) {
-                    const invites = await CircleService.getPendingInvitesSent(currentUser.id);
-                    const pendingToThisUser = invites.find(inv => inv.membership.memberId === userId);
-                    if (pendingToThisUser) {
-                        setPendingInvite({
-                            id: pendingToThisUser.membership.id,
-                            circleType: pendingToThisUser.membership.circleType
-                        });
+                    // Check for pending invite
+                    if (fetchedUser && currentUser) {
+                        try {
+                            const invites = await CircleService.getPendingInvitesSent(currentUser.id);
+                            const pendingToThisUser = invites.find(inv => inv.membership.memberId === userId);
+                            if (pendingToThisUser) {
+                                setPendingInvite({
+                                    id: pendingToThisUser.membership.id,
+                                    circleType: pendingToThisUser.membership.circleType
+                                });
+                            }
+                        } catch (err) {
+                            console.error("Error checking pending invites:", err);
+                        }
                     }
+                } else if (isOwnProfile && currentUser) {
+                    setUser(currentUser);
                 }
-            } else if (isOwnProfile && currentUser) {
-                setUser(currentUser);
-            }
 
-            const posts = await DBService.getPosts();
-            const targetUserId = userId || currentUser.id;
-            setUserPosts(posts.filter(p => p.userId === targetUserId));
-            setLoading(false);
+                const posts = await DBService.getPosts();
+                const targetUserId = userId || currentUser.id;
+                setUserPosts(posts.filter(p => p.userId === targetUserId));
+            } catch (error) {
+                console.error("Error loading profile:", error);
+            } finally {
+                setLoading(false);
+            }
         };
 
         loadProfile();
