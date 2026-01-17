@@ -76,18 +76,18 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
                 <div className="col-span-2 bg-white dark:bg-dark-card rounded-bento p-2 shadow-sm transition-colors border border-transparent dark:border-dark-border">
                     {isOwnProfile ? (
                         <div className="space-y-2">
-                            {/* Circle Action Buttons - New */}
+                            {/* Circle Action Buttons */}
                             <div className="grid grid-cols-2 gap-2">
                                 <button
                                     onClick={() => navigate('/circles/add')}
-                                    className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:shadow-md transition-all flex items-center justify-center gap-2"
+                                    className="bg-gray-100 dark:bg-dark-bg text-gray-900 dark:text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-gray-200 dark:hover:bg-dark-border transition-colors flex items-center justify-center gap-2"
                                 >
                                     <Users2 className="w-4 h-4" />
                                     Expand Circle
                                 </button>
                                 <button
                                     onClick={() => navigate('/my-circle')}
-                                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:shadow-md transition-all flex items-center justify-center gap-2"
+                                    className="bg-gray-100 dark:bg-dark-bg text-gray-900 dark:text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-gray-200 dark:hover:bg-dark-border transition-colors flex items-center justify-center gap-2"
                                 >
                                     <Users className="w-4 h-4" />
                                     My Circle
