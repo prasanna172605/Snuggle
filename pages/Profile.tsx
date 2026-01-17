@@ -22,7 +22,7 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
     const [sendingInvite, setSendingInvite] = useState(false);
 
     const checkPendingStatus = async () => {
-        if (!currentUser || !userId || isOwnProfile) return;
+        if (!currentUser || !currentUser.id || !userId || isOwnProfile) return;
 
         try {
             const invites = await CircleService.getPendingInvitesSent(currentUser.id);
