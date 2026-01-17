@@ -192,7 +192,7 @@ const App = () => {
   }
 
   return (
-    <CallProvider>
+    <CallProvider currentUser={currentUser}>
       <AppContent
         currentUser={currentUser}
         onLogout={handleLogout}
