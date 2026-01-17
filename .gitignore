@@ -1,28 +1,39 @@
+# Environment Files
+.env.local
+.env.*.local
+
+# Sensitive Environment Files
+.env.production
+
+# Firebase
+.firebase/
+.firebaserc
+
+# Build outputs
+dist/
+build/
+
+# Dependencies
+node_modules/
+
 # Logs
-logs
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# OS
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-*-firebase-adminsdk-*.json
+Thumbs.db
 
-.vercel
-.env*.local
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test coverage
+coverage/
+
+# Temporary files
+*.tmp
+.cache/

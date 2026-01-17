@@ -1,205 +1,248 @@
-# Snuggle - Social Media Messaging App
+# 🐾 Snuggle
 
-A modern social media messaging application built with React, TypeScript, Firebase, and Tailwind CSS.
+A modern, real-time social messaging application built with Firebase and React.
 
-## Features
+## 🚀 Core Features
 
-### 🔐 Authentication
-- Email/password authentication
-- Google OAuth signin
-- User profiles with avatars and bios
+- **Real-time Messaging** - Instant chat with typing indicators and read receipts
+- **Video Calls** - WebRTC-based peer-to-peer video calling
+- **Stories** - 24-hour ephemeral content sharing
+- **Activity Feed** - Social timeline with posts, likes, and comments
+- **User Presence** - Online/offline status and last active tracking
+- **Dark Mode** - System-respecting theme with manual toggle
+- **Drag & Drop** - File uploads and sortable lists
+- **Advanced Search** - Filtered, debounced search with recent queries
+- **Chat Themes** - Per-chat customization with wallpapers
+- **Accessibility** - WCAG 2.1 AA compliant with full keyboard navigation
 
-### 📱 Social Features
-- **Posts**: Create posts with images and captions
-- **Feed**: View posts from followed users
-- **Likes & Comments**: Interact with posts
-- **Follow System**: Follow/unfollow users
-- **User Profiles**: View user profiles with their posts
-
-### 💬 Messaging
-- Real-time one-on-one chat
-- Send text messages and images
-- Read receipts
-- Chat list with recent conversations
-
-### 📖 Stories
-- 24-hour expiring stories
-- Image and video support
-- View count tracking
-- Auto-deletion after expiry
-
-### 🔔 Notifications
-- Like notifications
-- Comment notifications
-- Follow notifications
-- Message notifications
-
-## Tech Stack
+## 🛠️ Tech Stack
 
 ### Frontend
-- **React 18** with TypeScript
-- **Vite** for build tooling
-- **Tailwind CSS** for styling
-- **Lucide React** for icons
-- **Firebase SDK** for backend integration
+- **React 18** - UI framework
+- **TypeScript** - Type safety
+- **Tailwind CSS** - Styling
+- **Vite** - Build tool
+- **React Router** - Client-side routing
 
-### Backend
-- **Firebase Authentication**: User management
-- **Firestore**: NoSQL database
-- **Firebase Storage**: Media file storage
-- **Firebase Hosting**: Web app deployment
+### Backend (Firebase)
+- **Firebase Auth** - Authentication
+- **Firebase Realtime Database** - Real-time data sync
+- **Firebase Cloud Functions** - Serverless backend
+- **Firebase Storage** - File uploads
+- **Firebase Hosting** - Static hosting
+- **Firebase Cloud Messaging** - Push notifications
 
-## Project Structure
+### Testing
+- **Jest** - Unit testing
+- **React Testing Library** - Component testing
+- **Playwright** - E2E testing
+- **Firebase Emulator** - Local development
 
+### Code Quality
+- **ESLint** - Code linting
+- **Prettier** - Code formatting
+- **Husky** - Git hooks
+- **TypeScript** - Static type checking
+
+## 📋 Prerequisites
+
+- Node.js 18+ 
+- npm or yarn
+- Firebase CLI (`npm install -g firebase-tools`)
+- Git
+
+## 🔧 Local Setup
+
+### 1. Clone Repository
+```bash
+git clone https://github.com/yourusername/snuggle.git
+cd snuggle
 ```
-D:/snuggle/
-├── pages/              # Page components
-│   ├── Login.tsx
-│   ├── Signup.tsx
-│   ├── Feed.tsx
-│   ├── Chat.tsx
-│   ├── Messages.tsx
-│   ├── Profile.tsx
-│   ├── Create.tsx
-│   ├── Explore.tsx
-│   ├── Notifications.tsx
-│   └── Settings.tsx
-├── services/           # Backend services
-│   ├── firebase.ts    # Firebase configuration
-│   └── database.ts    # Firestore operations
-├── components/         # Reusable components
-├── context/            # React Context providers
-├── types.ts            # TypeScript type definitions
-├── firebase.json       # Firebase configuration
-├── firestore.rules     # Firestore security rules
-├── storage.rules       # Storage security rules
-└── firestore.indexes.json  # Firestore indexes
 
+### 2. Install Dependencies
+```bash
+npm install
+cd functions && npm install && cd ..
 ```
 
-## Database Structure
+### 3. Configure Environment Variables
 
-### Collections
+Create `.env.development`:
+```env
+# Firebase Configuration
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=snuggle-dev.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=snuggle-dev
+VITE_FIREBASE_STORAGE_BUCKET=snuggle-dev.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
+VITE_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
 
-- **users**: User profiles and metadata
-- **posts**: User posts with images and captions
-- **comments**: Post comments
-- **messages/{chatId}/messages**: Chat messages
-- **chats**: Chat metadata
-- **stories**: 24-hour expiring content
-- **notifications**: User notifications
+# Environment
+VITE_APP_ENV=development
+VITE_USE_EMULATORS=true
 
-## Getting Started
+# Features
+VITE_FEATURE_DARK_MODE=true
+VITE_FEATURE_VIDEO_CALLS=true
+VITE_FEATURE_STORIES=true
 
-### Prerequisites
+# Monitoring
+VITE_SENTRY_DSN=your_sentry_dsn
+VITE_ANALYTICS_ENABLED=false
+```
 
-- Node.js 18+
-- Firebase account
-- Firebase CLI: `npm install -g firebase-tools`
+**⚠️ Never commit `.env.production` to version control**
 
-### Installation
-
-1. **Clone and install dependencies**:
-   ```bash
-   cd D:\snuggle
-   npm install
-   ```
-
-2. **Firebase setup** (already configured):
-   - Project ID: `snuggle-73465`
-   - Firebase config in `services/firebase.ts`
-
-3. **Deploy Firestore rules**:
-   ```bash
-   firebase deploy --only firestore:rules
-   firebase deploy --only storage:rules
-   firebase deploy --only firestore:indexes
-   ```
-
-4. **Run development server**:
-   ```bash
-   npm run dev
-   ```
-
-5. **Build for production**:
-   ```bash
-   npm run build
-   ```
-
-6. **Deploy to Firebase Hosting**:
-   ```bash
-   firebase deploy --only hosting
-   ```
-
-## Development with Emulators
-
-Run Firebase emulators for local development:
-
+### 4. Start Firebase Emulator
 ```bash
 firebase emulators:start
 ```
 
-Access:
-- App: `http://localhost:5000`
-- Firestore: `http://localhost:8080`
-- Auth: `http://localhost:9099`
-- Emulator UI: `http://localhost:4000`
+This starts:
+- Auth Emulator (port 9099)
+- Realtime Database (port 9000)
+- Cloud Functions (port 5001)
+- Storage (port 9199)
 
-## API Reference
+### 5. Start Development Server
+```bash
+npm run dev
+```
 
-See `services/database.ts` for all available methods:
+App runs at `http://localhost:5173`
 
-### User Operations
-- `createUser()` - Create new user
-- `getUserById()` - Get user by ID
-- `getUserByUsername()` - Get user by username
-- `updateUserProfile()` - Update profile
-- `searchUsers()` - Search for users
+## 🧪 Running Tests
 
-### Social Operations
-- `followUser()` - Follow a user
-- `unfollowUser()` - Unfollow a user
-- `getFollowers()` - Get user's followers
-- `getFollowing()` - Get users being followed
+### Unit & Component Tests
+```bash
+# Run all tests
+npm test
 
-### Post Operations
-- `createPost()` - Create new post
-- `getPost()` - Get post by ID
-- `getFeed()` - Get personalized feed
-- `getUserPosts()` - Get user's posts
-- `likePost()` / `unlikePost()` - Like interactions
-- `addComment()` - Add comment
-- `deletePost()` - Delete post
+# Watch mode
+npm test -- --watch
 
-### Messaging Operations
-- `sendMessage()` - Send message
-- `getMessages()` - Get chat messages
-- `markMessagesAsRead()` - Mark as read
+# Coverage
+npm test -- --coverage
+```
 
-### Story Operations
-- `createStory()` - Create story
-- `getUserStories()` - Get user's active stories
-- `getFollowingStories()` - Get stories from followed users
-- `viewStory()` - Record story view
-- `deleteExpiredStories()` - Clean up expired stories
+### E2E Tests
+```bash
+# Install Playwright
+npx playwright install
 
-### Notification Operations
-- `createNotification()` - Create notification
-- `getUserNotifications()` - Get user notifications
-- `markNotificationAsRead()` - Mark as read
-- `markAllNotificationsAsRead()` - Mark all as read
+# Run E2E tests
+npm run test:e2e
 
-## Security
+# Run in headed mode
+npm run test:e2e -- --headed
+```
 
-- Firestore security rules enforce data access control
-- Users can only modify their own data
-- Messages only accessible to sender/receiver
-- Storage rules validate file types and sizes (10MB max)
+### Security Tests
+```bash
+# Run security audit
+node scripts/security-audit.js
 
-## License
+# Test Firebase rules
+npm test security.rules.test.ts
+```
 
-Private project
+## 🚀 Deployment
 
-## Author
+### Environment Workflow
+- **Development** - Local with emulators
+- **Staging** - `snuggle-staging` Firebase project
+- **Production** - `snuggle-prod` Firebase project
 
-Made with 💙 for Snuggles
+### Deploy to Staging
+```bash
+npm run deploy:staging
+```
+
+### Deploy to Production
+```bash
+npm run deploy:prod
+```
+
+### CI/CD Pipeline
+Deployments are automated via GitHub Actions:
+- **dev** branch → Auto-deploy to staging
+- **main** branch → Auto-deploy to production
+
+See `.github/workflows/ci-cd.yml` for pipeline details.
+
+## 📁 Project Structure
+
+```
+snuggle/
+├── src/
+│   ├── components/       # React components
+│   │   ├── common/       # Reusable components
+│   │   ├── chat/         # Chat-specific components
+│   │   └── feed/         # Feed components
+│   ├── pages/            # Page components
+│   ├── services/         # Business logic & Firebase
+│   ├── hooks/            # Custom React hooks
+│   ├── context/          # React Context providers
+│   ├── utils/            # Utility functions
+│   └── types/            # TypeScript types
+├── functions/            # Cloud Functions
+│   └── src/
+│       ├── index.ts      # Function exports
+│       ├── pushNotifications.ts
+│       ├── scheduledJobs.ts
+│       └── activityJobs.ts
+├── e2e/                  # Playwright E2E tests
+├── __tests__/            # Jest tests
+├── public/               # Static assets
+├── .github/              # GitHub Actions workflows
+├── firebase.json         # Firebase configuration
+├── database.rules.json   # RTDB security rules
+└── storage.rules         # Storage security rules
+```
+
+## 🔐 Security
+
+- **Authentication** - Firebase Auth with email/password and Google Sign-In
+- **Authorization** - Firebase Security Rules for RTDB and Storage
+- **XSS Prevention** - Input sanitization on all user content
+- **Rate Limiting** - Cloud Functions enforce rate limits
+- **HTTPS** - Enforced via Firebase Hosting with HSTS
+- **CSP** - Content Security Policy headers configured
+
+See `docs/SECURITY.md` for security testing procedures.
+
+## 📖 Documentation
+
+- [Architecture Overview](docs/ARCHITECTURE.md)
+- [Data Model](docs/DATA_MODEL.md)
+- [Cloud Functions](docs/CLOUD_FUNCTIONS.md)
+- [Security Testing](docs/SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+
+## 🤝 Contributing
+
+1. Create a feature branch from `dev`
+2. Make changes with tests
+3. Run linting: `npm run lint:fix`
+4. Run tests: `npm test`
+5. Submit PR to `dev` branch
+
+All PRs require:
+- ✅ Passing tests
+- ✅ No linting errors
+- ✅ Code review approval
+
+## 📝 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🙋 Support
+
+- **Issues** - Report bugs via GitHub Issues
+- **Discussions** - Use GitHub Discussions for questions
+
+---
+
+**Built with ❤️ using Firebase and React**

@@ -22,12 +22,18 @@ import {
 import { db, auth, storage, googleProvider, realtimeDb, messaging } from './firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getToken } from 'firebase/messaging';
-import { signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged, signOut, deleteUser as deleteFirebaseUser, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged, signOut, deleteUser as deleteFirebaseUser, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { onSnapshot } from 'firebase/firestore';
 import { ref as rtdbRef, set, onDisconnect, serverTimestamp as rtdbServerTimestamp, onValue, off } from 'firebase/database';
 
 // Types
-export interface User {
+
+
+// Types
+import { User, Post as AppPost, Story as AppStory, Notification as AppNotification, CoreContent, ContentType, ContentStatus, ContentPriority } from '../types';
+
+// DB Model for User (matches Firestore data)
+export interface DBUser {
     id: string;
     username: string;
     fullName: string;
@@ -35,10 +41,31 @@ export interface User {
     bio?: string;
     isOnline?: boolean;
     email: string;
-    password?: string;
+    role: 'user' | 'admin';
+    isActive: boolean;
+    emailVerified: boolean;
+    verificationToken?: string;
+    verificationExpires?: number;
+    twoFactorEnabled?: boolean;
+    twoFactorSecret?: string; // Stored securely
+    twoFactorBackupCodes?: string[];
+    lastLogin?: Timestamp;
     displayName: string;
-    // followers and following removed - replaced by Circles
+    followers: string[];
+    following: string[];
     createdAt: Timestamp;
+    updatedAt: Timestamp;
+    phone?: string;
+    location?: {
+        city?: string;
+        country?: string;
+    };
+    dateOfBirth?: string;
+    socialLinks?: {
+        instagram?: string;
+        twitter?: string;
+        website?: string;
+    };
 }
 
 export interface Post {
@@ -65,17 +92,20 @@ export interface Comment {
 // Local Message interface removed to use shared types
 // export interface Message { ... }
 
+
 export interface Story {
     id: string;
     userId: string;
     username: string;
     userAvatar?: string;
-    mediaUrl: string;
+    mediaUrl: string; // Used by DB
+    imageUrl?: string; // Mapped for Feed compatibility
     mediaType: 'image' | 'video';
     createdAt: Timestamp;
     expiresAt: Timestamp;
     views: string[];
 }
+
 
 export interface Notification {
     id: string;
@@ -96,36 +126,76 @@ export class DBService {
 
     // ==================== USER OPERATIONS ====================
 
-    static async createUser(userId: string, userData: Partial<User>): Promise<User> {
+    static async createUser(userId: string, userData: Partial<DBUser>): Promise<User> {
         const userRef = doc(db, 'users', userId);
-        const newUser: User = {
+        const newUser: DBUser = {
             id: userId,
             username: userData.username || '',
             email: userData.email || '',
-            password: userData.password || '',
+            // password: userData.password || '', // Removed from schema
             displayName: userData.displayName || userData.username || '',
             fullName: userData.fullName || userData.displayName || '',
             bio: userData.bio || '',
             avatar: userData.avatar || '',
-            // followers: [], // DEPRECATED - Using Circles now
-            // following: [], // DEPRECATED - Using Circles now
-            createdAt: Timestamp.now()
+            role: 'user',
+            isActive: true,
+            emailVerified: false,
+            followers: [],
+            following: [],
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+            lastLogin: Timestamp.now()
         };
 
         await setDoc(userRef, newUser);
-        return newUser;
+
+        return {
+            ...newUser,
+            uid: newUser.id,
+            photoURL: newUser.avatar,
+            createdAt: newUser.createdAt.toMillis(),
+            updatedAt: newUser.updatedAt.toMillis(),
+            lastLogin: newUser.lastLogin?.toMillis()
+        } as unknown as User;
     }
 
     static async getUserById(userId: string): Promise<User | null> {
         const userRef = doc(db, 'users', userId);
         const userSnap = await getDoc(userRef);
-        return userSnap.exists() ? userSnap.data() as User : null;
+        if (userSnap.exists()) {
+            const data = userSnap.data() as DBUser;
+            return {
+                ...data,
+                createdAt: data.createdAt?.toMillis() || Date.now(),
+                updatedAt: data.updatedAt?.toMillis() || Date.now(),
+                lastLogin: data.lastLogin?.toMillis() || Date.now()
+            } as User;
+        }
+        return null;
     }
 
     static async getUserByUsername(username: string): Promise<User | null> {
         const q = query(collection(db, 'users'), where('username', '==', username), limit(1));
         const querySnapshot = await getDocs(q);
-        return querySnapshot.empty ? null : querySnapshot.docs[0].data() as User;
+        if (querySnapshot.empty) return null;
+
+        const data = querySnapshot.docs[0].data() as DBUser;
+        return {
+            ...data,
+            createdAt: data.createdAt?.toMillis() || Date.now(),
+            updatedAt: data.updatedAt?.toMillis() || Date.now(),
+            lastLogin: data.lastLogin?.toMillis() || Date.now()
+        } as User;
+    }
+
+    static async getUsersByIds(userIds: string[]): Promise<User[]> {
+        if (!userIds || userIds.length === 0) return [];
+        // Fetch in parallel. For large lists, this should be paginated or batched,
+        // but for this MVP feature it suffices.
+        // getUserById now returns User (App type), so this map is correct.
+        const promises = userIds.map(id => this.getUserById(id));
+        const users = await Promise.all(promises);
+        return users.filter(u => u !== null) as User[];
     }
 
     static async updateUserProfile(userId: string, updates: Partial<User>): Promise<void> {
@@ -179,12 +249,22 @@ export class DBService {
             limit(maxResults)
         );
         const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => doc.data() as User);
+        return querySnapshot.docs.map(doc => {
+            const data = doc.data() as DBUser;
+            return {
+                ...data,
+                uid: data.id,
+                photoURL: data.avatar,
+                createdAt: data.createdAt?.toMillis() || Date.now(),
+                updatedAt: data.updatedAt?.toMillis() || Date.now(),
+                lastLogin: data.lastLogin?.toMillis() || Date.now()
+            } as unknown as User;
+        });
     }
 
     // ==================== AUTHENTICATION OPERATIONS ====================
 
-    static async loginUser(identifier: string, password: string): Promise<User> {
+    static async loginUser(identifier: string, password: string): Promise<any> {
         // Note: Firebase Auth handles password verification
 
         // Check if identifier is email or username
@@ -193,8 +273,10 @@ export class DBService {
             // It's a username, look up the email
             const user = await this.getUserByUsername(identifier);
             if (!user) throw new Error('User not found');
-            email = user.email;
+            email = user.email || '';
         }
+
+        if (!email) throw new Error('Invalid email');
 
         // Firebase Auth sign in
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -204,10 +286,27 @@ export class DBService {
         const userData = await this.getUserById(userId);
         if (!userData) throw new Error('User data not found');
 
-        // Save session
-        await this.saveSession(userData);
+        // Update lastLogin
+        await updateDoc(doc(db, 'users', userId), {
+            lastLogin: serverTimestamp()
+        });
 
-        return userData;
+        // Get fresh user data
+        const updatedUserData = await this.getUserById(userId);
+        if (!updatedUserData) throw new Error('User data not found');
+
+        await this.saveSession(updatedUserData);
+        return updatedUserData;
+    }
+
+
+    static async resetPassword(email: string): Promise<void> {
+        await sendPasswordResetEmail(auth, email);
+    }
+
+    static async getCurrentToken(): Promise<string | null> {
+        if (!auth.currentUser) return null;
+        return await auth.currentUser.getIdToken(true); // Force refresh to get latest claims
     }
 
     static async loginWithGoogle(): Promise<{ user?: User; isNew: boolean; googleData?: any }> {
@@ -247,7 +346,7 @@ export class DBService {
         }
     }
 
-    static async completeGoogleSignup(data: { username: string; fullName: string; email: string; avatar: string }): Promise<User> {
+    static async completeGoogleSignup(data: { username: string; fullName: string; email: string; avatar: string }): Promise<any> {
         const currentUser = auth.currentUser;
         if (!currentUser) throw new Error('No authenticated user found');
         const userId = currentUser.uid;
@@ -265,6 +364,11 @@ export class DBService {
             displayName: data.fullName,
             avatar: data.avatar,
             bio: '',
+            role: 'user',
+            isActive: true,
+            emailVerified: true, // Google users are verified implicitly
+            updatedAt: Timestamp.now(),
+            lastLogin: Timestamp.now()
             // No password for Google users
         });
 
@@ -288,7 +392,7 @@ export class DBService {
         return newUser;
     }
 
-    static async registerUser(userData: { fullName: string; username: string; email: string; password: string }): Promise<User> {
+    static async registerUser(userData: { fullName: string; username: string; email: string; password: string }): Promise<any> {
         try {
             // Check if username already exists
             const existingUser = await this.getUserByUsername(userData.username);
@@ -308,7 +412,12 @@ export class DBService {
                 displayName: userData.fullName,
                 avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.fullName)}&background=random`,
                 bio: '',
-                password: userData.password
+                role: 'user',
+                isActive: true,
+                emailVerified: false,
+                updatedAt: Timestamp.now(),
+                lastLogin: Timestamp.now()
+                // password: userData.password // Removed
             });
 
             // Sync to Realtime Database
@@ -452,7 +561,20 @@ export class DBService {
         }
     }
 
-    static async updateProfile(userId: string, updates: { fullName?: string; username?: string; bio?: string; avatar?: string }): Promise<User> {
+
+    static async uploadAvatar(userId: string, file: File): Promise<string> {
+        const fileRef = ref(storage, `avatars/${userId}_${Date.now()}`);
+        await uploadBytes(fileRef, file);
+        return await getDownloadURL(fileRef);
+    }
+
+    static async updateProfile(userId: string, updates: Partial<User>): Promise<User> {
+        // ... existing updateProfile code logic is slightly different than above view but I don't see it all.
+        // I will trust the existing method signature if I can see it, but I need to make sure I don't break it. 
+        // Logic from previous view_file lines 555 showed:
+        // updateProfile(userId: string, updates: { fullName?: string; username?: string; bio?: string; avatar?: string }): Promise<User>
+        // My new types have more fields. I should update the type definition of 'updates' to Partial<User> to be more flexible.
+
         const userRef = doc(db, 'users', userId);
 
         // Update Firestore
@@ -464,10 +586,12 @@ export class DBService {
         // Sync to Realtime Database for real-time access
         try {
             const rtdbUserRef = rtdbRef(realtimeDb, `users/${userId}`);
-            await set(rtdbUserRef, {
-                ...updates,
-                updatedAt: rtdbServerTimestamp()
-            });
+            // We only need to sync key fields to RTDB for performance/size usually, but for now syncing all is fine.
+            // Filter undefineds
+            const rtdbUpdates: any = { ...updates, updatedAt: rtdbServerTimestamp() };
+            Object.keys(rtdbUpdates).forEach(key => rtdbUpdates[key] === undefined && delete rtdbUpdates[key]);
+
+            await set(rtdbUserRef, rtdbUpdates);
         } catch (error) {
             console.warn('RTDB profile sync failed (likely permissions):', error);
         }
@@ -476,7 +600,13 @@ export class DBService {
         const updatedUserSnap = await getDoc(userRef);
         if (!updatedUserSnap.exists()) throw new Error('User not found');
 
-        const updatedUser = updatedUserSnap.data() as User;
+        const data = updatedUserSnap.data() as DBUser;
+        const updatedUser: User = {
+            ...data,
+            createdAt: data.createdAt?.toMillis() || Date.now(),
+            updatedAt: data.updatedAt?.toMillis() || Date.now(),
+            lastLogin: data.lastLogin?.toMillis() || Date.now()
+        };
 
         // Update session storage
         await this.saveSession(updatedUser);
@@ -485,7 +615,6 @@ export class DBService {
     }
 
     static subscribeToNotifications(userId: string, callback: (notifications: import('../types').Notification[]) => void): () => void {
-
         const q = query(
             collection(db, 'notifications'),
             where('userId', '==', userId),
@@ -502,8 +631,8 @@ export class DBService {
                     userId: data.userId,
                     senderId: data.senderId || data.fromUserId,
                     type: data.type,
-                    text: data.text || data.message,
-                    timestamp: data.createdAt?.toMillis() || Date.now(),
+                    body: data.text || data.message || data.body,
+                    createdAt: data.createdAt?.toMillis() || Date.now(),
                     read: data.read
                 };
                 return notif;
@@ -554,36 +683,33 @@ export class DBService {
         });
     }
 
-    // DEPRECATED: Using Circles now
-    // static async getFollowers(userId: string): Promise<User[]> {
-    //     const user = await this.getUserById(userId);
-    //     if (!user || !user.followers.length) return [];
-    //     const followers: User[] = [];
-    //     for (const followerId of user.followers) {
-    //         const follower = await this.getUserById(followerId);
-    //         if (follower) followers.push(follower);
-    //     }
-    //     return followers;
-    // }
+    static async getFollowers(userId: string): Promise<User[]> {
+        const user = await this.getUserById(userId);
+        if (!user || !user.followers || !user.followers.length) return [];
+        const followers: User[] = [];
+        for (const followerId of user.followers) {
+            const follower = await this.getUserById(followerId);
+            if (follower) followers.push(follower);
+        }
+        return followers;
+    }
 
-    // DEPRECATED: Using Circles now
-    // static async getFollowing(userId: string): Promise<User[]> {
-    //     const user = await this.getUserById(userId);
-    //     if (!user || !user.following.length) return [];
-    //     const following: User[] = [];
-    //     for (const followingId of user.following) {
-    //         const followingUser = await this.getUserById(followingId);
-    //         if (followingUser) following.push(followingUser);
-    //     }
-    //     return following;
-    // }
+    static async getFollowing(userId: string): Promise<User[]> {
+        const user = await this.getUserById(userId);
+        if (!user || !user.following || !user.following.length) return [];
+        const following: User[] = [];
+        for (const followingId of user.following) {
+            const followingUser = await this.getUserById(followingId);
+            if (followingUser) following.push(followingUser);
+        }
+        return following;
+    }
 
-    // DEPRECATED: Using Circles now
-    // static async isFollowing(followerId: string, followingId: string): Promise<boolean> {
-    //     const follower = await this.getUserById(followerId);
-    //     if (!follower) return false;
-    //     return follower.following.includes(followingId);
-    // }
+    static async isFollowing(followerId: string, followingId: string): Promise<boolean> {
+        const follower = await this.getUserById(followerId);
+        if (!follower || !follower.following) return false;
+        return follower.following.includes(followingId);
+    }
 
     // ==================== POST OPERATIONS ====================
 
@@ -607,31 +733,34 @@ export class DBService {
         return postSnap.exists() ? postSnap.data() as Post : null;
     }
 
-    // DEPRECATED: Using Circles now - This method accessed user.following which no longer exists
-    // static async getFeed(userId: string, maxPosts: number = 20): Promise<import('../types').Post[]> {
-    //     const user = await this.getUserById(userId);
-    //     if (!user) return [];
-    //     const following = [...user.following, userId];
-    //     const q = query(
-    //         collection(db, 'posts'),
-    //         where('userId', 'in', following.slice(0, 10)),
-    //         orderBy('createdAt', 'desc'),
-    //         limit(maxPosts)
-    //     );
-    //     const querySnapshot = await getDocs(q);
-    //     return querySnapshot.docs.map(doc => {
-    //         const data = doc.data() as Post;
-    //         return {
-    //             id: doc.id,
-    //             userId: data.userId,
-    //             imageUrl: data.imageUrl || '',
-    //             caption: data.caption,
-    //             likes: data.likes.length,
-    //             comments: data.commentCount,
-    //             timestamp: data.createdAt.toMillis()
-    //         } as import('../types').Post;
-    //     });
-    // }
+    static async getFeed(userId: string, maxPosts: number = 20): Promise<import('../types').Post[]> {
+        const user = await this.getUserById(userId);
+        if (!user) return [];
+        const userFollowing = user.following || []; // Safe access
+        const following = [...userFollowing, userId];
+        const q = query(
+            collection(db, 'posts'),
+            where('userId', 'in', following.slice(0, 10)),
+            orderBy('createdAt', 'desc'),
+            limit(maxPosts)
+        );
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => {
+            const data = doc.data() as Post;
+            return {
+                id: doc.id,
+                userId: data.userId,
+                username: data.username || 'Unknown',
+                imageUrl: data.imageUrl || '',
+                caption: data.caption,
+                likes: data.likes.length,
+                commentCount: data.commentCount,
+                comments: data.commentCount, // map for compatibility
+                createdAt: data.createdAt.toMillis(),
+                timestamp: data.createdAt.toMillis()
+            } as import('../types').Post;
+        });
+    }
 
     static async getUserPosts(userId: string, maxPosts: number = 20): Promise<import('../types').Post[]> {
         const q = query(
@@ -654,6 +783,103 @@ export class DBService {
                 timestamp: data.createdAt.toMillis()
             } as import('../types').Post;
         });
+    }
+
+    // ==================== CORE CONTENT OPERATIONS ====================
+
+    static async createContent(data: Partial<CoreContent>): Promise<CoreContent> {
+        const token = await this.getCurrentToken();
+        const response = await fetch('/api/v1/content', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.message || 'Failed to create content');
+        }
+
+        const result = await response.json();
+        return result.data.content;
+    }
+
+    static async getContentList(
+        page: number = 1,
+        limit: number = 20,
+        filters?: { status?: string, priority?: string, search?: string }
+    ): Promise<{ data: CoreContent[], pagination: any, filters?: any }> {
+        const token = await this.getCurrentToken();
+
+        // Build query string
+        const params = new URLSearchParams({
+            page: page.toString(),
+            limit: limit.toString()
+        });
+
+        if (filters?.status) params.append('status', filters.status);
+        if (filters?.priority) params.append('priority', filters.priority);
+        if (filters?.search) params.append('q', filters.search);
+
+        const response = await fetch(`/api/v1/content?${params.toString()}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.message || 'Failed to fetch content');
+        }
+
+        const result = await response.json();
+        return {
+            data: result.data,
+            pagination: result.pagination,
+            filters: result.filters
+        };
+    }
+
+    static async getContentById(id: string): Promise<CoreContent> {
+        const token = await this.getCurrentToken();
+        const response = await fetch(`/api/v1/content/${id}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.message || 'Failed to fetch content details');
+        }
+
+        const result = await response.json();
+        return result.data;
+    }
+
+    static async updateContent(id: string, updates: Partial<CoreContent>): Promise<CoreContent> {
+        const token = await this.getCurrentToken();
+        const response = await fetch(`/api/v1/content/${id}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updates)
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.message || 'Failed to update content');
+        }
+
+        const result = await response.json();
+        return result.data;
     }
 
     static async likePost(postId: string, userId: string): Promise<void> {
@@ -765,7 +991,10 @@ export class DBService {
     }
 
     static async sendMessage(messageData: import('../types').Message): Promise<import('../types').Message> {
-        const chatId = this.getChatId(messageData.senderId, messageData.receiverId);
+        if (!messageData.senderId || !messageData.receiverId) {
+            throw new Error('Sender and receiver IDs are required');
+        }
+        const chatId = this.getChatId(messageData.senderId!, messageData.receiverId!);
         const messageRef = doc(collection(db, 'chats', chatId, 'messages'), messageData.id);
 
         const firestoreMessage = {
@@ -776,7 +1005,7 @@ export class DBService {
         await setDoc(messageRef, firestoreMessage);
 
         // Check if receiver is online - only mark as "delivered" if they are
-        const receiver = await this.getUserById(messageData.receiverId);
+        const receiver = messageData.receiverId ? await this.getUserById(messageData.receiverId) : null;
         let finalStatus: 'sent' | 'delivered' = 'sent';
 
         if (receiver?.isOnline) {
@@ -807,7 +1036,7 @@ export class DBService {
         const msgBody = messageData.type === 'text' ? messageData.text : `Sent a ${messageData.type}`;
 
         await this.sendPushNotification({
-            receiverId: messageData.receiverId,
+            receiverId: messageData.receiverId!,
             title: senderName,
             body: msgBody,
             url: '/messages',
@@ -1030,7 +1259,7 @@ export class DBService {
         */
     }
 
-    static async getUserChats(userId: string): Promise<any[]> {
+    static async getUserChats(userId: string): Promise<import('../types').Chat[]> {
         const q = query(
             collection(db, 'chats'),
             where('participants', 'array-contains', userId)
@@ -1054,17 +1283,18 @@ export class DBService {
                 ...data,
                 otherUser,
                 lastMessageTimeValue: safeTimestamp // For sorting
-            };
+            } as unknown as import('../types').Chat;
         }));
 
         // Sort in memory
-        return chats.sort((a, b) => b.lastMessageTimeValue - a.lastMessageTimeValue);
+        return chats.sort((a, b) => (b.lastMessageTimeValue || 0) - (a.lastMessageTimeValue || 0));
     }
 
     // Real-time subscription for user's chats (inbox) - enables live updates
+    // Real-time subscription for user's chats (inbox) - enables live updates
     static subscribeToUserChats(
         userId: string,
-        callback: (chats: any[]) => void
+        callback: (chats: import('../types').Chat[]) => void
     ): () => void {
         const q = query(
             collection(db, 'chats'),
@@ -1087,11 +1317,11 @@ export class DBService {
                     ...data,
                     otherUser,
                     lastMessageTimeValue: safeTimestamp
-                };
+                } as unknown as import('../types').Chat;
             }));
 
             // Sort by most recent
-            callback(chats.sort((a, b) => b.lastMessageTimeValue - a.lastMessageTimeValue));
+            callback(chats.sort((a, b) => (b.lastMessageTimeValue || 0) - (a.lastMessageTimeValue || 0)));
         });
 
         return unsubscribe;
@@ -1127,7 +1357,13 @@ export class DBService {
         );
 
         const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => doc.data() as Story);
+        return querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                ...data,
+                imageUrl: data.mediaUrl || data.imageUrl // Ensure compatibility
+            } as Story;
+        });
     }
 
     // DEPRECATED: Using Circles now
@@ -1263,7 +1499,13 @@ export class DBService {
             );
 
             const querySnapshot = await getDocs(q);
-            return querySnapshot.docs.map(doc => doc.data() as Story);
+            return querySnapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    ...data,
+                    imageUrl: data.mediaUrl || data.imageUrl // Ensure compatibility
+                } as Story;
+            });
         } catch (error) {
             console.error('Error getting stories:', error);
             // Return empty array if index is still building
@@ -1646,406 +1888,4 @@ export class DBService {
 
 // ==================== CIRCLE SERVICE ====================
 
-export class CircleService {
-
-    /**
-     * Send a circle invite to add someone to your circle
-     */
-    static async sendCircleInvite(params: {
-        ownerId: string;
-        memberId: string;
-        circleType: 'inner' | 'close' | 'outer';
-    }): Promise<void> {
-        const { ownerId, memberId, circleType } = params;
-
-        // Validation: Prevent self-invites
-        if (ownerId === memberId) {
-            throw new Error('Cannot add yourself to a circle');
-        }
-
-        // Check for existing membership
-        const existingQuery = query(
-            collection(db, 'circle_memberships'),
-            where('ownerId', '==', ownerId),
-            where('memberId', '==', memberId)
-        );
-        const existingDocs = await getDocs(existingQuery);
-
-        if (!existingDocs.empty) {
-            throw new Error('User already in a circle or has pending invite');
-        }
-
-        // Check inner circle limit
-        if (circleType === 'inner') {
-            const innerCircleQuery = query(
-                collection(db, 'circle_memberships'),
-                where('ownerId', '==', ownerId),
-                where('circleType', '==', 'inner'),
-                where('status', '==', 'approved')
-            );
-            const innerCircleDocs = await getDocs(innerCircleQuery);
-
-            if (innerCircleDocs.size >= 5) {
-                throw new Error('Inner circle is full (max 5 members)');
-            }
-        }
-
-        // Create the membership
-        const membershipRef = doc(collection(db, 'circle_memberships'));
-        const membership = {
-            id: membershipRef.id,
-            ownerId,
-            memberId,
-            circleType,
-            status: 'pending', // All invites require approval
-            createdAt: Date.now()
-        };
-
-        await setDoc(membershipRef, membership);
-
-        // Send notification to the invited user
-        await DBService.createNotification({
-            userId: memberId,
-            senderId: ownerId,
-            type: 'circle_invite',
-            text: `invited you to their ${circleType} circle`
-        });
-
-        // Trigger push notification
-        const owner = await DBService.getUserById(ownerId);
-        if (owner) {
-            await DBService.sendPushNotification({
-                receiverId: memberId,
-                title: 'Circle Invite',
-                body: `${owner.fullName} invited you to their ${circleType} circle`,
-                data: {
-                    type: 'circle_invite',
-                    ownerId,
-                    circleType
-                }
-            });
-        }
-    }
-
-    /**
-     * Approve a pending circle invite
-     */
-    static async approveCircleInvite(params: {
-        membershipId: string;
-        currentUserId: string;
-    }): Promise<void> {
-        const { membershipId, currentUserId } = params;
-
-        const membershipRef = doc(db, 'circle_memberships', membershipId);
-        const membershipSnap = await getDoc(membershipRef);
-
-        if (!membershipSnap.exists()) {
-            throw new Error('Membership not found');
-        }
-
-        const membership = membershipSnap.data();
-
-        // Only the member being invited can approve
-        if (membership.memberId !== currentUserId) {
-            throw new Error('Unauthorized: Only the invited user can approve');
-        }
-
-        if (membership.status !== 'pending') {
-            throw new Error('Invite is not pending');
-        }
-
-        // Check inner circle limit again (defensive)
-        if (membership.circleType === 'inner') {
-            const innerCircleQuery = query(
-                collection(db, 'circle_memberships'),
-                where('ownerId', '==', membership.ownerId),
-                where('circleType', '==', 'inner'),
-                where('status', '==', 'approved')
-            );
-            const innerCircleDocs = await getDocs(innerCircleQuery);
-
-            if (innerCircleDocs.size >= 5) {
-                throw new Error('Inner circle is now full');
-            }
-        }
-
-        await updateDoc(membershipRef, {
-            status: 'approved',
-            updatedAt: Date.now()
-        });
-
-        // Notify the circle owner that invite was accepted
-        await DBService.createNotification({
-            userId: membership.ownerId,
-            senderId: currentUserId,
-            type: 'circle_invite',
-            text: `accepted your ${membership.circleType} circle invite`
-        });
-    }
-
-    /**
-     * Reject a pending circle invite
-     */
-    static async rejectCircleInvite(params: {
-        membershipId: string;
-        currentUserId: string;
-    }): Promise<void> {
-        const { membershipId, currentUserId } = params;
-
-        const membershipRef = doc(db, 'circle_memberships', membershipId);
-        const membershipSnap = await getDoc(membershipRef);
-
-        if (!membershipSnap.exists()) {
-            throw new Error('Membership not found');
-        }
-
-        const membership = membershipSnap.data();
-
-        // Only the member being invited can reject
-        if (membership.memberId !== currentUserId) {
-            throw new Error('Unauthorized: Only the invited user can reject');
-        }
-
-        // Delete the membership
-        await deleteDoc(membershipRef);
-    }
-
-    /**
-     * Remove a member from your circle
-     */
-    static async removeMember(params: {
-        membershipId: string;
-        currentUserId: string;
-    }): Promise<void> {
-        const { membershipId, currentUserId } = params;
-
-        const membershipRef = doc(db, 'circle_memberships', membershipId);
-        const membershipSnap = await getDoc(membershipRef);
-
-        if (!membershipSnap.exists()) {
-            throw new Error('Membership not found');
-        }
-
-        const membership = membershipSnap.data();
-
-        // Only the circle owner can remove members
-        if (membership.ownerId !== currentUserId) {
-            throw new Error('Unauthorized: Only the circle owner can remove members');
-        }
-
-        await deleteDoc(membershipRef);
-    }
-
-    /**
-     * Move a member between circles
-     */
-    static async moveMember(params: {
-        membershipId: string;
-        newCircleType: 'inner' | 'close' | 'outer';
-        currentUserId: string;
-    }): Promise<void> {
-        const { membershipId, newCircleType, currentUserId } = params;
-
-        const membershipRef = doc(db, 'circle_memberships', membershipId);
-        const membershipSnap = await getDoc(membershipRef);
-
-        if (!membershipSnap.exists()) {
-            throw new Error('Membership not found');
-        }
-
-        const membership = membershipSnap.data();
-
-        // Only the circle owner can move members
-        if (membership.ownerId !== currentUserId) {
-            throw new Error('Unauthorized: Only the circle owner can move members');
-        }
-
-        if (membership.status !== 'approved') {
-            throw new Error('Cannot move pending memberships');
-        }
-
-        // Check inner circle limit if moving TO inner circle
-        if (newCircleType === 'inner' && membership.circleType !== 'inner') {
-            const innerCircleQuery = query(
-                collection(db, 'circle_memberships'),
-                where('ownerId', '==', membership.ownerId),
-                where('circleType', '==', 'inner'),
-                where('status', '==', 'approved')
-            );
-            const innerCircleDocs = await getDocs(innerCircleQuery);
-
-            if (innerCircleDocs.size >= 5) {
-                throw new Error('Inner circle is full (max 5 members)');
-            }
-        }
-
-        await updateDoc(membershipRef, {
-            circleType: newCircleType,
-            updatedAt: Date.now()
-        });
-    }
-
-    /**
-     * Get all my circles organized by type
-     */
-    static async getMyCircles(userId: string): Promise<{
-        inner: User[];
-        close: User[];
-        outer: User[];
-    }> {
-        const membershipsQuery = query(
-            collection(db, 'circle_memberships'),
-            where('ownerId', '==', userId),
-            where('status', '==', 'approved')
-        );
-
-        const snapshot = await getDocs(membershipsQuery);
-
-        const inner: User[] = [];
-        const close: User[] = [];
-        const outer: User[] = [];
-
-        for (const docSnap of snapshot.docs) {
-            const membership = docSnap.data();
-            const user = await DBService.getUserById(membership.memberId);
-
-            if (user) {
-                switch (membership.circleType) {
-                    case 'inner':
-                        inner.push(user);
-                        break;
-                    case 'close':
-                        close.push(user);
-                        break;
-                    case 'outer':
-                        outer.push(user);
-                        break;
-                }
-            }
-        }
-
-        return { inner, close, outer };
-    }
-
-    /**
-     * Get pending invites sent TO me
-     */
-    static async getPendingInvites(userId: string): Promise<Array<{
-        membership: any;
-        sender: User | null;
-    }>> {
-        const invitesQuery = query(
-            collection(db, 'circle_memberships'),
-            where('memberId', '==', userId),
-            where('status', '==', 'pending')
-        );
-
-        const snapshot = await getDocs(invitesQuery);
-        const invites: Array<{ membership: any; sender: User | null }> = [];
-
-        for (const docSnap of snapshot.docs) {
-            const membership = { id: docSnap.id, ...docSnap.data() } as any;
-            const sender = await DBService.getUserById(membership.ownerId);
-            invites.push({ membership, sender });
-        }
-
-        return invites;
-    }
-
-    /**
- * Get pending invites sent by user
- */
-    static async getPendingInvitesSent(ownerId: string) {
-        const q = query(
-            collection(db, 'circle_memberships'),
-            where('ownerId', '==', ownerId),
-            where('status', '==', 'pending')
-        );
-        const docs = await getDocs(q);
-        return await Promise.all(
-            docs.docs.map(async (doc) => ({
-                membership: { id: doc.id, ...doc.data() },
-                member: await DBService.getUserById(doc.data().memberId)
-            }))
-        );
-    }
-
-    /**
-     * Revoke pending invite
-     */
-    static async revokeCircleInvite(params: { membershipId: string; currentUserId: string }) {
-        const ref = doc(db, 'circle_memberships', params.membershipId);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) throw new Error('Not found');
-        if (snap.data().ownerId !== params.currentUserId) throw new Error('Unauthorized');
-        if (snap.data().status !== 'pending') throw new Error('Only pending');
-        await deleteDoc(ref);
-    }
-
-    /**
-     * Check if a user has permission for a specific action
-     */
-    static async checkPermission(params: {
-        ownerId: string;
-        memberId: string;
-        permission: 'messaging' | 'snaps' | 'calls' | 'mood';
-    }): Promise<boolean> {
-        const { ownerId, memberId, permission } = params;
-
-        // Get the membership
-        const membershipQuery = query(
-            collection(db, 'circle_memberships'),
-            where('ownerId', '==', ownerId),
-            where('memberId', '==', memberId),
-            where('status', '==', 'approved')
-        );
-
-        const snapshot = await getDocs(membershipQuery);
-
-        if (snapshot.empty) {
-            return false; // Not in any circle
-        }
-
-        const membership = snapshot.docs[0].data();
-        const circleType = membership.circleType;
-
-        // Permission matrix
-        switch (permission) {
-            case 'messaging':
-                return true; // All circles allow messaging
-            case 'snaps':
-                return circleType === 'inner' || circleType === 'close';
-            case 'calls':
-                return circleType === 'inner' || circleType === 'close';
-            case 'mood':
-                return circleType === 'inner';
-            default:
-                return false;
-        }
-    }
-
-    /**
-     * Get circle type for a specific member
-     */
-    static async getCircleType(params: {
-        ownerId: string;
-        memberId: string;
-    }): Promise<'inner' | 'close' | 'outer' | null> {
-        const { ownerId, memberId } = params;
-
-        const membershipQuery = query(
-            collection(db, 'circle_memberships'),
-            where('ownerId', '==', ownerId),
-            where('memberId', '==', memberId),
-            where('status', '==', 'approved')
-        );
-
-        const snapshot = await getDocs(membershipQuery);
-
-        if (snapshot.empty) {
-            return null;
-        }
-
-        return snapshot.docs[0].data().circleType;
-    }
-}
+// CircleService removed

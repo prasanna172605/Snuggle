@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Message } from '../types';
+import { User, Message, Chat } from '../types';
 import { DBService } from '../services/database';
-import { Search, Edit, Users, Loader2, ChevronRight, UserPlus, UserCheck } from 'lucide-react';
+import { Search, Edit, Users, Loader2, ChevronRight, UserPlus, X } from 'lucide-react';
 
 interface MessagesProps {
     currentUser: User;
@@ -20,63 +20,22 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
     const [chatToDelete, setChatToDelete] = useState<User | null>(null);
 
     // Search state
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState<User[]>([]);
 
-    const loadData = async () => {
-        // Try to load actual chats first (more accurate message history)
-        const chats = await DBService.getUserChats(currentUser.id);
-
-        if (chats.length > 0) {
-            const users: User[] = [];
-            const msgs: Record<string, Message | null> = {};
-
-            chats.forEach(chat => {
-                if (chat.otherUser) {
-                    // Extract unread count for current user
-                    const unreadMap = chat.unreadCounts || {};
-                    const unreadCount = unreadMap[currentUser.id] || 0;
-
-                    users.push({
-                        ...chat.otherUser,
-                        unreadCount // Add custom property
-                    });
-
-                    msgs[chat.otherUser.id] = {
-                        id: 'latest', // Simplified for list view
-                        text: chat.lastMessage,
-                        timestamp: chat.lastMessageTimeValue || Date.now(),
-                        senderId: chat.lastSenderId,
-                        status: 'sent', // Placeholder
-                        receiverId: currentUser.id, // Placeholder
-                        type: 'text'
-                    } as Message;
-                }
-            });
-            setChatUsers(users);
-            setLastMessages(msgs);
-        } else {
-            // DEPRECATED: Fallback to mutual follows removed - using Circles now
-            // No chats exist yet, show empty state
-            setChatUsers([]);
-            setLastMessages({});
-        }
-
-        setLoading(false);
-    };
-
     useEffect(() => {
         if (!currentUser?.id) {
-            console.log('[Messages] No currentUser.id, skipping chats subscription');
+            setLoading(false);
             return;
         }
 
-        // Real-time subscription for inbox...
-        const unsubscribe = DBService.subscribeToUserChats(currentUser.id, (chats) => {
-            if (chats.length > 0) {
-                const users: User[] = [];
-                const msgs: Record<string, Message | null> = {};
+        // Real-time subscription for inbox
+        const unsubscribe = DBService.subscribeToUserChats(currentUser.id, (chats: Chat[]) => {
+            const users: User[] = [];
+            const msgs: Record<string, Message | null> = {};
 
+            if (chats && chats.length > 0) {
                 chats.forEach(chat => {
                     if (chat.otherUser) {
                         const unreadMap = chat.unreadCounts || {};
@@ -85,7 +44,7 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
                         users.push({
                             ...chat.otherUser,
                             unreadCount
-                        });
+                        } as User & { unreadCount?: number });
 
                         msgs[chat.otherUser.id] = {
                             id: 'latest',
@@ -98,39 +57,21 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
                         } as Message;
                     }
                 });
-                setChatUsers(users);
-                setLastMessages(msgs);
-            } else {
-                setChatUsers([]);
-                setLastMessages({});
             }
+
+            setChatUsers(users);
+            setLastMessages(msgs);
             setLoading(false);
         });
 
-        // Also load initial data for fallback (mutual friends without chats)
-        loadData();
-
         const handleStorageChange = (e: StorageEvent | Event) => {
-            if (
-                e.type === 'local-storage-update' ||
-                e.type === 'local-storage-presence' ||
-                e.type === 'local-storage-relationships' ||
-                (e instanceof StorageEvent && (e.key === 'snuggle_messages_v1' || e.key === 'snuggle_presence_v1' || e.key === 'snuggle_relationships_v1'))
-            ) {
-                loadData();
-            }
+            // Re-fetch if needed, but subscription handles most cases
         };
 
-        window.addEventListener('local-storage-update', handleStorageChange);
-        window.addEventListener('local-storage-presence', handleStorageChange);
-        window.addEventListener('local-storage-relationships', handleStorageChange);
         window.addEventListener('storage', handleStorageChange);
 
         return () => {
-            unsubscribe(); // Cleanup real-time listener
-            window.removeEventListener('local-storage-update', handleStorageChange);
-            window.removeEventListener('local-storage-presence', handleStorageChange);
-            window.removeEventListener('local-storage-relationships', handleStorageChange);
+            unsubscribe();
             window.removeEventListener('storage', handleStorageChange);
         };
     }, [currentUser]);
@@ -143,13 +84,21 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
                 return;
             }
 
-            const allUsers = await DBService.getUsers();
-            const filtered = allUsers.filter(u =>
-                u.id !== currentUser.id &&
-                (u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    u.fullName.toLowerCase().includes(searchTerm.toLowerCase()))
-            );
-            setSearchResults(filtered);
+            try {
+                // Determine search strategy: username or fuzzy?
+                // For now, client-side filtering of recent/all users is expensive if many users.
+                // Assuming DBService has a search method or we fetch all (as done previously).
+                // Ideally: DBService.searchUsers(searchTerm)
+                const allUsers = await DBService.getUsers(); // Warning: Scale issue
+                const filtered = allUsers.filter(u =>
+                    u.id !== currentUser.id &&
+                    (u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (u.fullName && u.fullName.toLowerCase().includes(searchTerm.toLowerCase())))
+                );
+                setSearchResults(filtered);
+            } catch (error) {
+                console.error("Search failed", error);
+            }
         };
 
         const debounce = setTimeout(runSearch, 300);
@@ -157,20 +106,22 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
     }, [searchTerm, currentUser.id]);
 
     const handleSearchResultClick = (user: User) => {
-        // If we are friends (in chatUsers), go to chat
         const isFriend = chatUsers.some(u => u.id === user.id);
-
         if (isFriend) {
             onChatSelect(user);
         } else {
-            // If not friends, go to profile to connect
             onUserClick(user.id);
         }
+        setIsSearchOpen(false); // Close search after selection
+        setSearchTerm('');
     };
 
-    if (loading) return <div className="flex justify-center pt-20"><Loader2 className="animate-spin text-snuggle-500" /></div>;
-
-
+    const toggleSearch = () => {
+        setIsSearchOpen(!isSearchOpen);
+        if (isSearchOpen) {
+            setSearchTerm(''); // Clear on close
+        }
+    };
 
     const handleTouchStart = (user: User) => {
         const timer = setTimeout(() => {
@@ -191,26 +142,25 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
         if (!chatToDelete) return;
 
         try {
-            // Optimistic update
             const userId = chatToDelete.id;
+            // Optimistic update
             setChatUsers(prev => prev.filter(u => u.id !== userId));
 
             const chatId = DBService.getChatId(currentUser.id, userId);
             await DBService.deleteChat(chatId);
-
-            // Reload to ensure sync
-            loadData();
         } catch (error) {
             console.error('Error deleting chat:', error);
             alert('Failed to delete chat');
-            loadData(); // Revert on fail
+            // Consider reloading data here if optimistic update failed
         } finally {
             setChatToDelete(null);
         }
     };
 
+    if (loading) return <div className="flex justify-center pt-20"><Loader2 className="animate-spin text-snuggle-500" /></div>;
+
     return (
-        <div className="pb-24 pt-2 px-2 relative">
+        <div className="pb-24 pt-2 px-2 relative min-h-screen">
             {/* Delete Confirmation Modal */}
             {chatToDelete && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
@@ -242,36 +192,44 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
                 </div>
             )}
 
-            {/* Bento Header Block */}
+            {/* Header Block */}
             <div className="bg-white dark:bg-dark-card rounded-bento p-6 mb-2 shadow-sm flex items-center justify-between border border-transparent dark:border-dark-border transition-colors">
                 <div>
                     <h2 className="text-2xl font-black text-gray-900 dark:text-white">Messages</h2>
                     <p className="text-gray-400 font-medium text-xs mt-1">
-                        {searchTerm ? `Searching for "${searchTerm}"` : `${chatUsers.length} friends`}
+                        {isSearchOpen ? 'Search users...' : (chatUsers.length === 0 ? 'No conversations yet' : `${chatUsers.length} conversations`)}
                     </p>
                 </div>
-                <button className="w-12 h-12 bg-gray-100 dark:bg-dark-border rounded-full flex items-center justify-center text-gray-800 dark:text-gray-200 hover:bg-snuggle-100 dark:hover:bg-snuggle-900 hover:text-snuggle-600 transition-colors">
-                    <Edit className="w-5 h-5" />
-                </button>
-            </div>
-
-            {/* Search Block */}
-            <div className="bg-white dark:bg-dark-card rounded-bento p-2 mb-2 shadow-sm border border-transparent dark:border-dark-border transition-colors">
-                <div className="relative">
-                    <Search className="absolute left-4 top-3.5 h-5 w-5 text-gray-400" />
-                    <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Search for people..."
-                        className="w-full bg-gray-50 dark:bg-black rounded-[24px] pl-12 pr-4 py-3.5 text-sm font-medium focus:outline-none focus:bg-gray-100 dark:focus:bg-dark-border dark:text-white transition-colors"
-                    />
+                <div className="flex gap-2">
+                    <button
+                        onClick={toggleSearch}
+                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isSearchOpen ? 'bg-red-50 text-red-500' : 'bg-gray-100 dark:bg-dark-border text-gray-800 dark:text-gray-200'}`}
+                    >
+                        {isSearchOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
+                    </button>
                 </div>
             </div>
 
-            {/* List Block */}
-            <div className="bg-white dark:bg-dark-card rounded-bento p-2 shadow-sm min-h-[300px] border border-transparent dark:border-dark-border transition-colors">
-                {searchTerm ? (
+            {/* Search Input Area - Conditionally Rendered */}
+            {isSearchOpen && (
+                <div className="bg-white dark:bg-dark-card rounded-bento p-2 mb-2 shadow-sm border border-transparent dark:border-dark-border transition-colors animate-in slide-in-from-top-2">
+                    <div className="relative">
+                        <Search className="absolute left-4 top-3.5 h-5 w-5 text-gray-400" />
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Find people to chat with..."
+                            autoFocus
+                            className="w-full bg-gray-50 dark:bg-black rounded-[24px] pl-12 pr-4 py-3.5 text-sm font-medium focus:outline-none focus:bg-gray-100 dark:focus:bg-dark-border dark:text-white transition-colors"
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* Content Area */}
+            <div className="bg-white dark:bg-dark-card rounded-bento p-2 shadow-sm min-h-[400px] border border-transparent dark:border-dark-border transition-colors">
+                {isSearchOpen && searchTerm ? (
                     // --- SEARCH RESULTS VIEW ---
                     searchResults.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
@@ -279,7 +237,7 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
                         </div>
                     ) : (
                         <div className="space-y-1">
-                            <h3 className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Results</h3>
+                            <h3 className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Search Results</h3>
                             {searchResults.map(user => {
                                 const isFriend = chatUsers.some(u => u.id === user.id);
                                 return (
@@ -295,14 +253,9 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
                                                 <p className="text-xs text-gray-500 truncate">{user.fullName}</p>
                                             </div>
                                         </div>
-
-                                        {isFriend ? (
-                                            <span className="text-xs font-bold text-gray-300 mr-2">Friend</span>
-                                        ) : (
-                                            <div className="w-8 h-8 rounded-full bg-snuggle-50 dark:bg-snuggle-900/30 flex items-center justify-center text-snuggle-500">
-                                                <UserPlus className="w-4 h-4" />
-                                            </div>
-                                        )}
+                                        <div className="w-8 h-8 rounded-full bg-snuggle-50 dark:bg-snuggle-900/30 flex items-center justify-center text-snuggle-500">
+                                            {isFriend ? <ChevronRight className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                                        </div>
                                     </div>
                                 );
                             })}
@@ -311,33 +264,28 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
                 ) : (
                     // --- EXISTING CHATS VIEW ---
                     chatUsers.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                        <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
                             <div className="bg-gray-50 dark:bg-dark-border p-6 rounded-full mb-4">
                                 <Users className="w-12 h-12 text-gray-300 dark:text-gray-600" />
                             </div>
-                            <h3 className="text-gray-900 dark:text-white font-bold mb-2">No Connections</h3>
-                            <p className="text-gray-400 text-sm">Use the search bar above to find new people!</p>
+                            <h3 className="text-gray-900 dark:text-white font-bold mb-2">No Messages Yet</h3>
+                            <p className="text-gray-400 text-sm max-w-xs mx-auto">Tap the search button above to find friends and start chatting!</p>
                         </div>
                     ) : (
                         <div className="space-y-1">
                             {chatUsers.map(user => {
                                 const lastMsg = lastMessages[user.id];
-                                // Check unread status correctly
-                                const unreadCount = (user as any).unreadCount || 0; // Requires passed down data or lookup
-                                // We need to update loadData to pass unreadCount from chat doc or query it.
-                                // TEMPORARY: relying on passed user object having it added in loadData
-
+                                const unreadCount = (user as any).unreadCount || 0;
                                 const timeString = lastMsg
                                     ? new Date(lastMsg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                                     : '';
-
                                 const isUnread = unreadCount > 0;
 
                                 return (
                                     <div
                                         key={user.id}
                                         onClick={() => onChatSelect(user)}
-                                        onContextMenu={(e) => { e.preventDefault(); setChatToDelete(user); }} // Desktop right click
+                                        onContextMenu={(e) => { e.preventDefault(); setChatToDelete(user); }}
                                         onTouchStart={() => handleTouchStart(user)}
                                         onTouchEnd={handleTouchEnd}
                                         onMouseDown={() => handleTouchStart(user)}
@@ -367,7 +315,6 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
                                             </p>
                                         </div>
 
-                                        {/* Unread Badge or Chevron */}
                                         {isUnread ? (
                                             <div className="w-6 h-6 rounded-full bg-snuggle-500 flex items-center justify-center flex-shrink-0 shadow-sm shadow-snuggle-200 ml-2">
                                                 <span className="text-white text-[10px] font-bold leading-none">

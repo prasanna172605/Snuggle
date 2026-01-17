@@ -1,5 +1,57 @@
 /* Standard CSS Only - Tailwind is handled via CDN in index.html */
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark Mode Base Styles */
+@layer base {
+
+  /* Smooth theme transitions */
+  * {
+    @apply transition-colors duration-200;
+  }
+
+  /* Light mode body */
+  body {
+    @apply bg-white text-gray-900;
+  }
+
+  /* Dark mode body */
+  .dark body {
+    @apply bg-gray-900 text-gray-100;
+  }
+
+  /* Prevent transition on theme change for specific elements */
+  .no-transition {
+    transition: none !important;
+  }
+}
+
+@layer utilities {
+
+  /* Indeterminate progress bar animation */
+  @keyframes indeterminate {
+    0% {
+      transform: translateX(-100%);
+      width: 50%;
+    }
+
+    50% {
+      width: 75%;
+    }
+
+    100% {
+      transform: translateX(200%);
+      width: 50%;
+    }
+  }
+
+  .animate-indeterminate {
+    animation: indeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+}
+
 body {
   font-family: 'Plus Jakarta Sans', sans-serif;
   background-color: #0f172a;

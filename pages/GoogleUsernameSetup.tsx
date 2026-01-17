@@ -5,7 +5,7 @@ import { AtSign, Loader2, ArrowRight } from 'lucide-react';
 
 interface GoogleUsernameSetupProps {
   googleData: { email: string; fullName: string; avatar: string };
-  onSignup: (userId: string) => void;
+  onSignup: (user: import('../types').User) => void;
   onCancel: () => void;
 }
 
@@ -33,7 +33,7 @@ const GoogleUsernameSetup: React.FC<GoogleUsernameSetupProps> = ({ googleData, o
         email: googleData.email,
         avatar: googleData.avatar
       });
-      onSignup(user.id);
+      onSignup(user);
     } catch (err: any) {
       setError(err.message || 'Signup failed');
       setLoading(false);

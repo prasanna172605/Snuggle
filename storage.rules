@@ -1,65 +1,70 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
+    // Default deny all
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
     
-    function isImageFile() {
-      return request.resource.contentType.matches('image/.*');
-    }
-
-    function isVideoFile() {
-      return request.resource.contentType.matches('video/.*');
-    }
-
-    function isAudioFile() {
-      return request.resource.contentType.matches('audio/.*');
-    }
-    
-    function isValidSize() {
-      return request.resource.size < 10 * 1024 * 1024; // 10MB limit
-    }
-    
-    // Profile avatars
+    // User avatars
     match /avatars/{userId}/{fileName} {
-      allow read: if true;
-      allow write: if isSignedIn() && 
-                     request.auth.uid == userId && 
-                     isImageFile() && 
-                     isValidSize();
-      allow delete: if isSignedIn() && request.auth.uid == userId;
+      // Allow read by anyone authenticated
+      allow read: if request.auth != null;
+      
+      // Only owner can write/delete
+      allow write, delete: if request.auth != null 
+        && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024  // 5MB max
+        && request.resource.contentType.matches('image/.*');
     }
     
     // Post images
-    match /posts/{userId}/{fileName} {
-      allow read: if true;
-      allow write: if isSignedIn() && 
-                     request.auth.uid == userId && 
-                     (isImageFile() || isVideoFile()) && 
-                     isValidSize();
-      allow delete: if isSignedIn() && request.auth.uid == userId;
+    match /posts/{postId}/{fileName} {
+      // Allow read by anyone authenticated
+      allow read: if request.auth != null;
+      
+      // Allow write if authenticated and valid image
+      allow write: if request.auth != null
+        && request.resource.size < 10 * 1024 * 1024  // 10MB max
+        && request.resource.contentType.matches('image/.*');
+      
+      // Only uploader can delete (check metadata)
+      allow delete: if request.auth != null 
+        && resource.metadata.uploadedBy == request.auth.uid;
     }
     
-    // Story media
+    // Chat images
+    match /chats/{chatId}/{fileName} {
+      // Read if user is participant in chat
+      allow read: if request.auth != null
+        && exists(/databases/$(database)/documents/chats/$(chatId)/participants/$(request.auth.uid));
+      
+      // Write if user is participant and valid image
+      allow write: if request.auth != null
+        && exists(/databases/$(database)/documents/chats/$(chatId)/participants/$(request.auth.uid))
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      
+      // Delete if user uploaded it
+      allow delete: if request.auth != null
+        && resource.metadata.uploadedBy == request.auth.uid;
+    }
+    
+    // Story images
     match /stories/{userId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && 
-                     request.auth.uid == userId && 
-                     (isImageFile() || isVideoFile()) && 
-                     isValidSize();
-      allow delete: if isSignedIn() && request.auth.uid == userId;
-    }
-    
-    // Message media (images, video, audio)
-    match /messages/{chatId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && 
-                     (isImageFile() || isVideoFile() || isAudioFile()) && 
-                     isValidSize();
-      allow delete: if isSignedIn();
+      // Anyone can read authenticated users' stories
+      allow read: if request.auth != null;
+      
+      // Only owner can upload stories
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 10 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') 
+           || request.resource.contentType.matches('video/.*'));
+      
+      // Only owner can delete
+      allow delete: if request.auth != null
+        && request.auth.uid == userId;
     }
   }
 }

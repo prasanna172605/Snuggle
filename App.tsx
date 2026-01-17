@@ -1,10 +1,14 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 import { onMessage } from 'firebase/messaging';
-import { messaging } from './services/firebase';
-import { User } from './types';
+import { signOut } from 'firebase/auth';
+import { messaging, auth } from './services/firebase';
+import { User, GoogleSetupData } from './types';
 import { DBService } from './services/database';
 import { Loader2 } from 'lucide-react';
+import { Toaster } from 'sonner';
+import { errorHandler } from './services/globalErrorHandler';
+import { ThemeProvider } from './context/ThemeContext';
 
 // Lazy Load Pages
 const Login = React.lazy(() => import('./pages/Login'));
@@ -17,8 +21,6 @@ const Chat = React.lazy(() => import('./pages/Chat'));
 const Settings = React.lazy(() => import('./pages/Settings'));
 const Create = React.lazy(() => import('./pages/Create'));
 const Notifications = React.lazy(() => import('./pages/Notifications'));
-const AddToCircle = React.lazy(() => import('./pages/AddToCircle'));
-const MyCircle = React.lazy(() => import('./pages/MyCircle'));
 const BottomNav = React.lazy(() => import('./components/BottomNav'));
 import CallOverlay from './components/CallOverlay';
 import { CallProvider } from './context/CallContext';
@@ -103,6 +105,9 @@ const AppContent = ({
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Initialize global error handler
+    errorHandler.setupGlobalListeners();
+
     // Request permissions on launch
     const requestPermissions = async () => {
       if ('Notification' in window && Notification.permission === 'default') {
@@ -126,7 +131,7 @@ const AppContent = ({
     requestPermissions();
 
     if (!currentUser?.id) return;
-    const unsubscribe = DBService.subscribeToNotifications(currentUser.id, (notifs) => {
+    const unsubscribe = DBService.subscribeToNotifications(currentUser.id, (notifs: import('./types').Notification[]) => {
       setUnreadCount(notifs.filter(n => !n.read).length);
     });
 
@@ -152,6 +157,8 @@ const AppContent = ({
 
   return (
     <div className="min-h-screen bg-snuggle-50 dark:bg-black flex justify-center">
+      {/* Toast Notifications */}
+      <Toaster position="top-right" richColors closeButton />
       <div className="w-full max-w-lg bg-white dark:bg-dark-bg relative">
         <CallOverlay />
 
@@ -162,8 +169,6 @@ const AppContent = ({
             <Route path="/chat/:userId" element={<ChatWrapper currentUser={currentUser} />} />
             <Route path="/profile" element={<Profile user={currentUser} currentUser={currentUser} isOwnProfile={true} onLogout={onLogout} />} />
             <Route path="/profile/:userId" element={<Profile currentUser={currentUser} isOwnProfile={false} />} />
-            <Route path="/circles/add" element={<AddToCircle />} />
-            <Route path="/my-circle" element={<MyCircle />} />
             <Route path="/create" element={<CreateWrapper currentUser={currentUser} />} />
             <Route path="/notifications" element={<Notifications currentUser={currentUser} onUserClick={(userId) => navigate(`/profile/${userId}`)} />} />
             <Route path="/settings" element={<SettingsWrapper currentUser={currentUser} onLogout={onLogout} onUpdateUser={onUpdateUser} onDeleteAccount={onDeleteAccount} onSwitchAccount={onSwitchAccount} onAddAccount={onAddAccount} />} />
@@ -202,13 +207,24 @@ const App = () => {
     // await DBService.setUserOnline(user.id, true); // Method doesn't exist - removed
   };
 
-  const handleLogout = () => {
-    // if (currentUser) {
-    //   DBService.setUserOnline(currentUser.id, false); // Method doesn't exist - removed
-    // }
-    localStorage.removeItem('currentUser');
-    setCurrentUser(null);
-    setAuthView('LOGIN');
+  const onLogout = async () => {
+    try {
+      // Delete FCM token if available
+      const { deleteFCMToken } = await import('./services/fcmService');
+      await deleteFCMToken();
+
+      // Sign out from Firebase
+      await signOut(auth);
+      localStorage.removeItem('currentUser');
+      setCurrentUser(null);
+      setAuthView('LOGIN');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback logout
+      localStorage.removeItem('currentUser');
+      setCurrentUser(null);
+      setAuthView('LOGIN');
+    }
   };
 
   if (isLoading) {
@@ -221,6 +237,7 @@ const App = () => {
         {authView === 'LOGIN' && (
           <Login
             onLogin={handleLogin}
+            onNavigate={(view) => setAuthView(view as 'LOGIN' | 'SIGNUP' | 'GOOGLE_SETUP')}
             onSwitchToSignup={() => setAuthView('SIGNUP')}
             onGoogleSetup={(googleUser) => {
               setTempGoogleUser(googleUser);
@@ -231,13 +248,15 @@ const App = () => {
         {authView === 'SIGNUP' && (
           <Signup
             onSignup={handleLogin}
+            onNavigate={(view) => setAuthView(view as 'LOGIN' | 'SIGNUP' | 'GOOGLE_SETUP')}
             onSwitchToLogin={() => setAuthView('LOGIN')}
           />
         )}
         {authView === 'GOOGLE_SETUP' && tempGoogleUser && (
           <GoogleUsernameSetup
-            user={tempGoogleUser}
-            onComplete={handleLogin}
+            googleData={tempGoogleUser}
+            onSignup={handleLogin}
+            onCancel={() => setAuthView('LOGIN')}
           />
         )}
       </Suspense>
@@ -245,23 +264,25 @@ const App = () => {
   }
 
   return (
-    <CallProvider currentUser={currentUser}>
-      <AppContent
-        currentUser={currentUser}
-        onLogout={handleLogout}
-        onUpdateUser={(user) => {
-          setCurrentUser(user);
-          localStorage.setItem('currentUser', JSON.stringify(user));
-        }}
-        onDeleteAccount={handleLogout}
-        onSwitchAccount={(userId) => {
-          // Switch account logic
-        }}
-        onAddAccount={() => {
-          // Add account logic
-        }}
-      />
-    </CallProvider>
+    <ThemeProvider>
+      <CallProvider currentUser={currentUser}>
+        <AppContent
+          currentUser={currentUser}
+          onLogout={onLogout}
+          onUpdateUser={(user) => {
+            setCurrentUser(user);
+            localStorage.setItem('currentUser', JSON.stringify(user));
+          }}
+          onDeleteAccount={onLogout}
+          onSwitchAccount={(userId) => {
+            // Switch account logic
+          }}
+          onAddAccount={() => {
+            // Add account logic
+          }}
+        />
+      </CallProvider>
+    </ThemeProvider>
   );
 };
 

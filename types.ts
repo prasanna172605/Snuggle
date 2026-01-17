@@ -1,113 +1,141 @@
-
 export interface User {
-  id: string;
+  id: string; // Primary ID (often same as uid)
+  uid?: string; // Firebase Auth ID (optional as it overlaps with id)
+  email: string;
   username: string;
-  fullName: string;
-  avatar: string;
+  displayName: string; // Often same as fullName or username
+  photoURL?: string; // Mapped to avatar
+
+  // Extended fields (DBUser compatibility)
+  fullName?: string;
+  avatar?: string;
   bio?: string;
+
+  // Status
   isOnline?: boolean;
-  email?: string;
-  password?: string; // In a real app, never store plain text passwords on frontend
-  // followers and following REMOVED - replaced by Circles
+  lastActive?: number;
+  lastLogin?: any;
+  createdAt?: any; // Timestamp or number
+  updatedAt?: any;
+
+  // Social
+  followers?: string[];
+  following?: string[];
+  socialLinks?: {
+    instagram?: string;
+    twitter?: string;
+    website?: string;
+  };
+
+  // Account
+  role?: 'user' | 'admin';
+  isActive?: boolean;
+  emailVerified?: boolean;
+  fcmToken?: string;
 }
 
-export interface Story {
+export interface GoogleSetupData {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL: string;
+}
+
+export interface Message {
   id: string;
-  userId: string;
-  imageUrl: string;
+  text: string;
+  senderId: string;
+  receiverId?: string;
   timestamp: number;
-  viewed: boolean;
+  read: boolean;
+  status?: 'sent' | 'delivered' | 'read';
+  type?: 'text' | 'image' | 'video' | 'audio';
+  fileUrl?: string;
+}
+
+export interface Chat {
+  id: string;
+  participants: string[];
+  lastMessage?: string;
+  lastMessageTimeValue?: number;
+  lastSenderId?: string;
+  unreadCount?: number;
+  unreadCounts?: Record<string, number>;
+  otherUser?: User;
 }
 
 export interface Post {
   id: string;
   userId: string;
-  imageUrl: string;
-  mediaType?: 'image' | 'video'; // Added for Reels support
+  username?: string; // Optional in DB creation
+  userAvatar?: string;
   caption: string;
-  likes: number;
-  comments: number;
-  timestamp: number;
+  imageUrl?: string;
+  likes: string[] | number; // Can be array of IDs or count
+  comments?: Comment[] | number; // Can be comments or count
+  commentCount?: number;
+  createdAt?: any;
+  timestamp?: number; // DB uses timestamp
 }
 
-export interface Message {
+export interface Story {
   id: string;
-  senderId: string;
-  receiverId: string;
-  text: string;
-  timestamp: number;
-  status: 'sent' | 'delivered' | 'seen';
-  type: 'text' | 'image' | 'audio' | 'call';
-  reactions?: Record<string, string>; // userId -> emoji
-  // Call metadata (when type === 'call')
-  callType?: 'audio' | 'video';
-  callDuration?: number; // in seconds
-  callStatus?: 'completed' | 'missed' | 'declined';
-}
-
-export interface ChatSession {
   userId: string;
-  lastMessage: Message | null;
-  unreadCount: number;
-  isTyping?: boolean;
+  username: string;
+  userAvatar?: string;
+  imageUrl: string;
+  createdAt: any;
+  expiresAt: any;
+  viewers?: string[];
 }
 
 export interface Notification {
   id: string;
-  userId: string; // The recipient
-  senderId: string; // Who triggered it
-  type: 'follow' | 'like' | 'comment' | 'circle_invite';
-  text: string;
-  timestamp: number;
+  userId: string;
+  type: 'like' | 'comment' | 'follow' | 'mention' | 'system';
+  title?: string;
+  body?: string;
+
+  // Sender info (various aliases used)
+  fromUserId?: string;
+  senderId?: string; // Alias
+
+  fromUsername?: string;
+  fromUserAvatar?: string;
+  resourceId?: string;
   read: boolean;
+  createdAt: any;
 }
 
-// ========= SNUGGLE CIRCLES =========
-
-export type CircleType = 'inner' | 'close' | 'outer';
-export type MembershipStatus = 'pending' | 'approved';
-
-export interface CircleMembership {
+export interface Comment {
   id: string;
-  ownerId: string;        // User who owns this circle
-  memberId: string;       // User being added to circle
-  circleType: CircleType;
-  status: MembershipStatus;
+  postId: string;
+  userId: string;
+  username: string;
+  userAvatar?: string;
+  text: string;
+  createdAt: any;
+}
+
+// Core Content Types
+export type ContentType = 'post' | 'story' | 'reel';
+export type ContentStatus = 'draft' | 'published' | 'archived';
+export type ContentPriority = 'normal' | 'high' | 'featured';
+
+export interface CoreContent {
+  id: string;
+  type: ContentType;
+  status: ContentStatus;
+  priority: ContentPriority;
+  authorId: string;
   createdAt: number;
-  updatedAt?: number;
-}
-
-// ====================================
-
-export enum ViewState {
-  LOGIN = 'LOGIN',
-  SIGNUP = 'SIGNUP',
-  GOOGLE_SETUP = 'GOOGLE_SETUP', // New view for setting username after Google auth
-  FEED = 'FEED',
-  CREATE = 'CREATE', // New view for creating content
-  MESSAGES = 'MESSAGES',
-  PROFILE = 'PROFILE',
-  USER_PROFILE = 'USER_PROFILE', // Viewing someone else's profile
-  CHAT = 'CHAT',
-  SETTINGS = 'SETTINGS',
-  NOTIFICATIONS = 'NOTIFICATIONS',
-  CIRCLES = 'CIRCLES',
-  CIRCLE_INVITES = 'CIRCLE_INVITES',
-  ADD_TO_CIRCLE = 'ADD_TO_CIRCLE'
-}
-
-export type CallType = 'audio' | 'video';
-
-export interface SignalingMessage {
-  type: 'offer' | 'answer' | 'candidate' | 'end' | 'reject' | 'busy' | 'answered_elsewhere';
-  sdp?: RTCSessionDescriptionInit;
-  candidate?: RTCIceCandidateInit;
-  senderId: string;
-  receiverId: string;
-  callType?: CallType;
-  timestamp: number;
-  // Device identification for multi-device support
-  deviceId?: string;
-  answeringDeviceId?: string;
-  callerId?: string; // For answered_elsewhere signal
+  updatedAt: number;
+  title?: string;
+  description?: string;
+  tags?: string[];
+  metrics?: {
+    views: number;
+    likes: number;
+    shares: number;
+  };
 }
