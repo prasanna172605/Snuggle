@@ -91,7 +91,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, user, onClose, onNex
     return (
         <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
             {/* Story Content */}
-            <div 
+            <div
                 className="relative w-full h-full max-w-md bg-gray-900"
                 onMouseDown={handleTouchStart}
                 onMouseUp={handleTouchEnd}
@@ -99,17 +99,17 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, user, onClose, onNex
                 onTouchEnd={handleTouchEnd}
             >
                 {isVideo ? (
-                    <video 
+                    <video
                         ref={videoRef}
-                        src={currentStory.imageUrl} 
+                        src={currentStory.imageUrl}
                         className="w-full h-full object-contain"
                         onEnded={handleVideoEnded}
                         playsInline
                     />
                 ) : (
-                    <img 
-                        src={currentStory.imageUrl} 
-                        alt="Story" 
+                    <img
+                        src={currentStory.imageUrl}
+                        alt="Story"
                         className="w-full h-full object-contain"
                     />
                 )}
@@ -120,10 +120,10 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, user, onClose, onNex
                     <div className="flex gap-1 mb-3">
                         {stories.map((_, idx) => (
                             <div key={idx} className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
-                                <div 
+                                <div
                                     className="h-full bg-white transition-all duration-100 ease-linear"
-                                    style={{ 
-                                        width: idx < currentIndex ? '100%' : idx === currentIndex ? `${progress}%` : '0%' 
+                                    style={{
+                                        width: idx < currentIndex ? '100%' : idx === currentIndex ? `${progress}%` : '0%'
                                     }}
                                 />
                             </div>
@@ -135,7 +135,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, user, onClose, onNex
                         <div className="flex items-center gap-3">
                             <img src={user.avatar} className="w-8 h-8 rounded-full border border-white/50" alt="" />
                             <span className="text-white font-bold text-sm shadow-black drop-shadow-md">{user.username}</span>
-                            <span className="text-white/70 text-xs">{new Date(currentStory.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            <span className="text-white/70 text-xs">{new Date(currentStory.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                         <div className="flex items-center gap-4">
                             <button className="text-white/80">

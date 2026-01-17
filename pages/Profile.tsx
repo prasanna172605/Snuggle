@@ -1,114 +1,56 @@
-
 import React, { useState, useEffect } from 'react';
-import { User, ViewState, Post } from '../types';
-import { Settings, Grid, Tag, UserPlus, UserCheck, MessageCircle, Search, X, Loader2, Edit3, Share2, ChevronRight } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { User, Post } from '../types';
+import { Settings, Grid, Edit3, Share2, MessageCircle } from 'lucide-react';
 import { DBService } from '../services/database';
 
 interface ProfileProps {
-    user: User;
+    user?: User;
     currentUser: User;
     isOwnProfile: boolean;
     onLogout?: () => void;
-    onNavigate?: (view: ViewState, userId?: string) => void;
-    onStartChat?: (user: User) => void;
 }
 
-const Profile: React.FC<ProfileProps> = ({ user, currentUser, isOwnProfile, onLogout, onNavigate, onStartChat }) => {
-    const [followers, setFollowers] = useState<User[]>([]);
-    const [following, setFollowing] = useState<User[]>([]);
-    const [isFollowing, setIsFollowing] = useState(false);
+const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnProfile, onLogout }) => {
+    const { userId } = useParams();
+    const navigate = useNavigate();
+    const [user, setUser] = useState<User | null>(propUser || null);
     const [userPosts, setUserPosts] = useState<Post[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [isMutual, setIsMutual] = useState(false);
-
-    // Modal State
-    const [showListModal, setShowListModal] = useState(false);
-    const [listTitle, setListTitle] = useState('');
-    const [listedUsers, setListedUsers] = useState<User[]>([]);
-    const [loadingList, setLoadingList] = useState(false);
+    const [loading, setLoading] = useState(!propUser);
 
     useEffect(() => {
-        const loadStats = async () => {
-            const [f, fing, isF, posts, mutual] = await Promise.all([
-                DBService.getFollowers(user.id),
-                DBService.getFollowing(user.id),
-                DBService.isFollowing(currentUser.id, user.id),
-                DBService.getPosts(),
-                DBService.isMutualFollow(currentUser.id, user.id)
-            ]);
-            setFollowers(f);
-            setFollowing(fing);
-            setIsFollowing(isF);
-            setUserPosts(posts.filter(p => p.userId === user.id));
-            setIsMutual(mutual);
+        const loadProfile = async () => {
+            if (userId && !isOwnProfile) {
+                const fetchedUser = await DBService.getUserById(userId);
+                setUser(fetchedUser);
+            } else if (isOwnProfile && currentUser) {
+                setUser(currentUser);
+            }
+
+            const posts = await DBService.getPosts();
+            const targetUserId = userId || currentUser.id;
+            setUserPosts(posts.filter(p => p.userId === targetUserId));
             setLoading(false);
         };
 
-        loadStats();
+        loadProfile();
+    }, [userId, currentUser, isOwnProfile]);
 
-        const handleRelationshipChange = () => loadStats();
-        window.addEventListener('local-storage-relationships', handleRelationshipChange);
-        return () => window.removeEventListener('local-storage-relationships', handleRelationshipChange);
-    }, [user.id, currentUser.id]);
-
-    const handleFollowToggle = async () => {
-        const previousIsFollowing = isFollowing;
-        const previousFollowers = followers;
-
-        // Optimistic UI Update
-        setIsFollowing(!previousIsFollowing);
-
-        if (previousIsFollowing) {
-            // Unfollowing: Remove current user from followers list
-            setFollowers(prev => prev.filter(u => u.id !== currentUser.id));
-        } else {
-            // Following: Add current user to followers list
-            // Ensure we don't duplicate if already there (for safety)
-            if (!followers.some(u => u.id === currentUser.id)) {
-                setFollowers(prev => [...prev, currentUser]);
-            }
-        }
-
-        try {
-            if (previousIsFollowing) {
-                await DBService.unfollowUser(currentUser.id, user.id);
-            } else {
-                await DBService.followUser(currentUser.id, user.id);
-            }
-        } catch (error) {
-            console.error('Follow action failed:', error);
-            // Revert on failure
-            setIsFollowing(previousIsFollowing);
-            setFollowers(previousFollowers);
-        }
-    };
-
-    const handleShowList = (title: string, users: User[]) => {
-        if (users.length === 0) return;
-
-        setListTitle(title);
-        setListedUsers(users);
-        setShowListModal(true);
-    };
-
-    const handleUserClick = (userId: string) => {
-        setShowListModal(false);
-        if (onNavigate) {
-            onNavigate(ViewState.USER_PROFILE, userId);
-        }
-    };
-
-    if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-snuggle-500" /></div>;
+    if (loading || !user) {
+        return (
+            <div className="flex justify-center p-10">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500" />
+            </div>
+        );
+    }
 
     return (
         <div className="pb-28 pt-2 px-2 relative">
-            {/* Bento Grid Layout */}
             <div className="grid grid-cols-2 gap-2">
 
-                {/* 1. Main Profile Card (Spans 2 columns) */}
+                {/* Main Profile Card */}
                 <div className="col-span-2 bg-white dark:bg-dark-card rounded-bento p-6 flex flex-col items-center justify-center text-center shadow-sm relative overflow-hidden transition-colors border border-transparent dark:border-dark-border">
-                    {/* Decorative BG */}
-                    <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-r from-snuggle-100 to-emerald-100 dark:from-emerald-900/40 dark:to-teal-900/40 opacity-50" />
+                    <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-r from-cyan-100 to-blue-100 dark:from-cyan-900/40 dark:to-blue-900/40 opacity-50" />
 
                     <div className="relative z-10 mt-4">
                         <div className="w-28 h-28 rounded-[36px] p-1.5 bg-white dark:bg-dark-card shadow-sm mb-4">
@@ -121,33 +63,39 @@ const Profile: React.FC<ProfileProps> = ({ user, currentUser, isOwnProfile, onLo
                         </div>
                     </div>
 
-                    {isOwnProfile && onNavigate && (
+                    {isOwnProfile && (
                         <div className="absolute top-4 right-4 z-20 flex gap-2">
-                            <button onClick={() => onNavigate(ViewState.SETTINGS)} className="p-2 bg-white/80 dark:bg-black/50 backdrop-blur rounded-full hover:bg-gray-100 dark:hover:bg-dark-border transition-colors shadow-sm">
+                            <button onClick={() => navigate('/settings')} className="p-2 bg-white/80 dark:bg-black/50 backdrop-blur rounded-full hover:bg-gray-100 dark:hover:bg-dark-border transition-colors shadow-sm">
                                 <Settings className="w-5 h-5 text-gray-700 dark:text-gray-200" />
                             </button>
                         </div>
                     )}
                 </div>
 
-                {/* 2. Stats Cards (Individual Bento Blocks) */}
-                <div
-                    onClick={() => handleShowList('Followers', followers)}
-                    className="bg-white dark:bg-dark-card rounded-bento p-4 flex flex-col items-center justify-center shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-95 border border-transparent dark:border-dark-border"
-                >
-                    <span className="text-2xl font-black text-gray-900 dark:text-white">{followers.length}</span>
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Followers</span>
-                </div>
+                {/* My Circles Button - Only for Own Profile */}
+                {isOwnProfile && (
+                    <div
+                        onClick={() => navigate('/circles')}
+                        className="col-span-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-bento p-4 flex items-center justify-between shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-98"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className="text-white font-bold text-base">My Circles</h3>
+                                <p className="text-white/80 text-xs">Manage connections</p>
+                            </div>
+                        </div>
+                        <svg className="w-5 h-5 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                    </div>
+                )}
 
-                <div
-                    onClick={() => handleShowList('Following', following)}
-                    className="bg-white dark:bg-dark-card rounded-bento p-4 flex flex-col items-center justify-center shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-95 border border-transparent dark:border-dark-border"
-                >
-                    <span className="text-2xl font-black text-gray-900 dark:text-white">{following.length}</span>
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Following</span>
-                </div>
-
-                {/* 3. Action Bar (Spans 2 columns) */}
+                {/* Action Bar */}
                 <div className="col-span-2 bg-white dark:bg-dark-card rounded-bento p-2 shadow-sm transition-colors border border-transparent dark:border-dark-border">
                     <div className="flex gap-2">
                         {isOwnProfile ? (
@@ -160,33 +108,23 @@ const Profile: React.FC<ProfileProps> = ({ user, currentUser, isOwnProfile, onLo
                                 </button>
                             </>
                         ) : (
-                            <>
-                                <button
-                                    onClick={handleFollowToggle}
-                                    className={`flex-1 py-4 rounded-[24px] font-bold text-sm flex items-center justify-center gap-2 transition-all ${isFollowing ? 'bg-gray-100 dark:bg-dark-border text-gray-900 dark:text-white' : 'bg-snuggle-500 text-white shadow-lg shadow-snuggle-200'}`}
-                                >
-                                    {isFollowing ? 'Following' : 'Follow'}
-                                </button>
-                                {isMutual && onStartChat && (
-                                    <button
-                                        onClick={() => onStartChat(user)}
-                                        className="w-16 bg-black dark:bg-white text-white dark:text-black rounded-[24px] flex items-center justify-center hover:bg-gray-800 dark:hover:bg-gray-200"
-                                    >
-                                        <MessageCircle className="w-6 h-6" />
-                                    </button>
-                                )}
-                            </>
+                            <button className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500 text-white py-4 rounded-[24px] font-bold text-sm hover:shadow-md transition-shadow flex items-center justify-center gap-2">
+                                <MessageCircle className="w-5 h-5" />
+                                Message
+                            </button>
                         )}
                     </div>
                 </div>
 
-                {/* 4. Posts Header */}
+                {/* Posts Header */}
                 <div className="col-span-2 mt-2 flex items-center justify-between px-2">
                     <h3 className="font-bold text-gray-900 dark:text-white">Recent Snaps</h3>
-                    <span className="text-xs font-bold text-gray-400 bg-white dark:bg-dark-card px-2 py-1 rounded-lg border border-transparent dark:border-dark-border">{userPosts.length}</span>
+                    <span className="text-xs font-bold text-gray-400 bg-white dark:bg-dark-card px-2 py-1 rounded-lg border border-transparent dark:border-dark-border">
+                        {userPosts.length}
+                    </span>
                 </div>
 
-                {/* 5. Posts Grid (Spans 2 columns, internal grid) */}
+                {/* Posts Grid */}
                 <div className="col-span-2 grid grid-cols-2 gap-2">
                     {userPosts.map(post => (
                         <div key={post.id} className="aspect-square bg-gray-200 dark:bg-gray-800 rounded-[24px] overflow-hidden relative group">
@@ -211,60 +149,6 @@ const Profile: React.FC<ProfileProps> = ({ user, currentUser, isOwnProfile, onLo
                     )}
                 </div>
             </div>
-
-            {/* User List Modal */}
-            {showListModal && (
-                <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
-                    <div
-                        className="bg-white dark:bg-dark-card w-full max-w-md h-[80vh] sm:h-[600px] rounded-t-3xl sm:rounded-3xl flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300 border border-transparent dark:border-dark-border"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* Modal Header */}
-                        <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800">
-                            <div className="w-8" /> {/* Spacer */}
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">{listTitle}</h3>
-                            <button
-                                onClick={() => setShowListModal(false)}
-                                className="w-8 h-8 flex items-center justify-center bg-gray-100 dark:bg-dark-border rounded-full text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        {/* Modal List */}
-                        <div className="flex-1 overflow-y-auto p-2">
-                            {loadingList ? (
-                                <div className="flex justify-center py-10">
-                                    <Loader2 className="w-8 h-8 animate-spin text-snuggle-500" />
-                                </div>
-                            ) : listedUsers.length === 0 ? (
-                                <div className="text-center py-10 text-gray-400">
-                                    <p>No users found</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-1">
-                                    {listedUsers.map(u => (
-                                        <div
-                                            key={u.id}
-                                            onClick={() => handleUserClick(u.id)}
-                                            className="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-dark-border rounded-2xl cursor-pointer transition-colors"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <img src={u.avatar} alt={u.username} className="w-12 h-12 rounded-2xl object-cover border border-gray-100 dark:border-gray-700" />
-                                                <div>
-                                                    <p className="font-bold text-gray-900 dark:text-white text-sm">{u.username}</p>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400">{u.fullName}</p>
-                                                </div>
-                                            </div>
-                                            <ChevronRight className="w-5 h-5 text-gray-300" />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

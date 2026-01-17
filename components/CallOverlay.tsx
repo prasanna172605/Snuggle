@@ -47,15 +47,17 @@ const CallOverlay: React.FC = () => {
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
+      console.log('[CallOverlay] Setting local stream');
       localVideoRef.current.srcObject = localStream;
     }
-  }, [localStream, activeCall]);
+  }, [localStream]);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
+      console.log('[CallOverlay] Setting remote stream');
       remoteVideoRef.current.srcObject = remoteStream;
     }
-  }, [remoteStream, activeCall]);
+  }, [remoteStream]);
 
   if (incomingCall && caller) {
     return (
@@ -104,7 +106,7 @@ const CallOverlay: React.FC = () => {
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              style={{ transform: 'none' }}
+              muted={false}
               className="w-full h-full object-cover"
             />
           ) : (
@@ -112,6 +114,21 @@ const CallOverlay: React.FC = () => {
               <img src={activeUser?.avatar} className="w-32 h-32 rounded-full border-4 border-gray-700 opacity-50 mb-4" />
               <p className="text-white/50 animate-pulse">Connecting...</p>
             </div>
+          )}
+
+          {/* AUDIO element for audio-only calls */}
+          {remoteStream && (
+            <audio
+              ref={(el) => {
+                if (el && remoteStream) {
+                  console.log('[CallOverlay] Setting audio element stream');
+                  el.srcObject = remoteStream;
+                  el.play().catch(e => console.error('Audio play failed:', e));
+                }
+              }}
+              autoPlay
+              playsInline
+            />
           )}
 
           {/* Local Video (PIP) */}

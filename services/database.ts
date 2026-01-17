@@ -37,8 +37,7 @@ export interface User {
     email: string;
     password?: string;
     displayName: string;
-    followers: string[];
-    following: string[];
+    // followers and following removed - replaced by Circles
     createdAt: Timestamp;
 }
 
@@ -81,7 +80,7 @@ export interface Story {
 export interface Notification {
     id: string;
     userId: string;
-    type: 'like' | 'comment' | 'follow' | 'message';
+    type: 'like' | 'comment' | 'follow' | 'message' | 'circle_invite';
     senderId: string;
     text: string;
     read: boolean;
@@ -108,8 +107,8 @@ export class DBService {
             fullName: userData.fullName || userData.displayName || '',
             bio: userData.bio || '',
             avatar: userData.avatar || '',
-            followers: [],
-            following: [],
+            // followers: [], // DEPRECATED - Using Circles now
+            // following: [], // DEPRECATED - Using Circles now
             createdAt: Timestamp.now()
         };
 
@@ -555,35 +554,36 @@ export class DBService {
         });
     }
 
-    static async getFollowers(userId: string): Promise<User[]> {
-        const user = await this.getUserById(userId);
-        if (!user || !user.followers.length) return [];
+    // DEPRECATED: Using Circles now
+    // static async getFollowers(userId: string): Promise<User[]> {
+    //     const user = await this.getUserById(userId);
+    //     if (!user || !user.followers.length) return [];
+    //     const followers: User[] = [];
+    //     for (const followerId of user.followers) {
+    //         const follower = await this.getUserById(followerId);
+    //         if (follower) followers.push(follower);
+    //     }
+    //     return followers;
+    // }
 
-        const followers: User[] = [];
-        for (const followerId of user.followers) {
-            const follower = await this.getUserById(followerId);
-            if (follower) followers.push(follower);
-        }
-        return followers;
-    }
+    // DEPRECATED: Using Circles now
+    // static async getFollowing(userId: string): Promise<User[]> {
+    //     const user = await this.getUserById(userId);
+    //     if (!user || !user.following.length) return [];
+    //     const following: User[] = [];
+    //     for (const followingId of user.following) {
+    //         const followingUser = await this.getUserById(followingId);
+    //         if (followingUser) following.push(followingUser);
+    //     }
+    //     return following;
+    // }
 
-    static async getFollowing(userId: string): Promise<User[]> {
-        const user = await this.getUserById(userId);
-        if (!user || !user.following.length) return [];
-
-        const following: User[] = [];
-        for (const followingId of user.following) {
-            const followingUser = await this.getUserById(followingId);
-            if (followingUser) following.push(followingUser);
-        }
-        return following;
-    }
-
-    static async isFollowing(followerId: string, followingId: string): Promise<boolean> {
-        const follower = await this.getUserById(followerId);
-        if (!follower) return false;
-        return follower.following.includes(followingId);
-    }
+    // DEPRECATED: Using Circles now
+    // static async isFollowing(followerId: string, followingId: string): Promise<boolean> {
+    //     const follower = await this.getUserById(followerId);
+    //     if (!follower) return false;
+    //     return follower.following.includes(followingId);
+    // }
 
     // ==================== POST OPERATIONS ====================
 
@@ -1133,21 +1133,18 @@ export class DBService {
         return querySnapshot.docs.map(doc => doc.data() as Story);
     }
 
-    static async getFollowingStories(userId: string): Promise<Story[]> {
-        const user = await this.getUserById(userId);
-        if (!user || !user.following.length) return [];
-
-        const now = Timestamp.now();
-        const stories: Story[] = [];
-
-        // Get stories from followed users
-        for (const followingId of user.following) {
-            const userStories = await this.getUserStories(followingId);
-            stories.push(...userStories);
-        }
-
-        return stories.sort((a, b) => b.createdAt.seconds - a.createdAt.seconds);
-    }
+    // DEPRECATED: Using Circles now
+    // static async getFollowingStories(userId: string): Promise<Story[]> {
+    //     const user = await this.getUserById(userId);
+    //     if (!user || !user.following.length) return [];
+    //     const now = Timestamp.now();
+    //     const stories: Story[] = [];
+    //     for (const followingId of user.following) {
+    //         const userStories = await this.getUserStories(followingId);
+    //         stories.push(...userStories);
+    //     }
+    //     return stories.sort((a, b) => b.createdAt.seconds - a.createdAt.seconds);
+    // }
 
     static async viewStory(storyId: string, userId: string): Promise<void> {
         const storyRef = doc(db, 'stories', storyId);
@@ -1579,23 +1576,43 @@ export class DBService {
             where('receiverId', '==', userId)
         );
 
+        // Track processed signal IDs to prevent re-processing on refresh
+        const processedSignals = new Set<string>();
+
         const unsubscribe = onSnapshot(q, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'added') {
+                    const signalId = change.doc.id;
                     const signal = change.doc.data();
-                    // Client-side filter: Ignore signals older than 5 minutes
-                    // This avoids index requirements and processes only fresh signals
-                    if (signal.timestamp && signal.timestamp > Date.now() - 300000) {
-                        console.log('[Signal] Received from Firestore:', signal.type);
-                        callback(signal);
-                    } else {
-                        console.log('[Signal] Ignoring stale signal:', signal.type, signal.timestamp);
+
+                    // Skip if we've already processed this signal
+                    if (processedSignals.has(signalId)) {
+                        console.log('[Signal] Skipping already processed signal:', signalId);
+                        return;
                     }
 
-                    // Cleanup: We DO NOT delete signals immediately because user might be on multiple devices.
-                    // If Device A deletes it, Device B (which might be the active one) won't receive it.
-                    // We rely on the timestamp filter (> 5 mins) to ignore old signals.
-                    // A backend scheduled function can clean up old signals later if needed.
+                    // Client-side filter: Ignore signals older than 2 minutes
+                    // This allows time for notifications to arrive while preventing ghost calls
+                    if (signal.timestamp && signal.timestamp > Date.now() - 120000) {
+                        console.log('[Signal] Received from Firestore:', signal.type, signalId);
+                        processedSignals.add(signalId);
+                        callback(signal);
+
+                        // Delete the signal after processing to keep Firestore clean
+                        // This is safe because we've marked it as processed
+                        setTimeout(() => {
+                            deleteDoc(change.doc.ref).catch(err =>
+                                console.warn('[Signal] Failed to delete signal:', err)
+                            );
+                        }, 5000); // Delete after 5 seconds to allow multi-device processing
+                    } else {
+                        console.log('[Signal] Ignoring stale signal:', signal.type, signal.timestamp);
+                        processedSignals.add(signalId);
+                        // Clean up old stale signals immediately
+                        deleteDoc(change.doc.ref).catch(err =>
+                            console.warn('[Signal] Failed to delete stale signal:', err)
+                        );
+                    }
                 }
             });
         });
@@ -1614,6 +1631,7 @@ export class DBService {
         icon?: string;
         type?: 'message' | 'call';
         actions?: any[]; // For call actions like Accept/Decline
+        data?: Record<string, any>; // Custom data payload
     }): Promise<void> {
         try {
             // Always use Vercel Production API for Push Notifications (CORS is enabled)
@@ -1627,5 +1645,379 @@ export class DBService {
         } catch (error) {
             console.warn('[DB] Failed to send push notification:', error);
         }
+    }
+}
+
+// ==================== CIRCLE SERVICE ====================
+
+export class CircleService {
+
+    /**
+     * Send a circle invite to add someone to your circle
+     */
+    static async sendCircleInvite(params: {
+        ownerId: string;
+        memberId: string;
+        circleType: 'inner' | 'close' | 'outer';
+    }): Promise<void> {
+        const { ownerId, memberId, circleType } = params;
+
+        // Validation: Prevent self-invites
+        if (ownerId === memberId) {
+            throw new Error('Cannot add yourself to a circle');
+        }
+
+        // Check for existing membership
+        const existingQuery = query(
+            collection(db, 'circle_memberships'),
+            where('ownerId', '==', ownerId),
+            where('memberId', '==', memberId)
+        );
+        const existingDocs = await getDocs(existingQuery);
+
+        if (!existingDocs.empty) {
+            throw new Error('User already in a circle or has pending invite');
+        }
+
+        // Check inner circle limit
+        if (circleType === 'inner') {
+            const innerCircleQuery = query(
+                collection(db, 'circle_memberships'),
+                where('ownerId', '==', ownerId),
+                where('circleType', '==', 'inner'),
+                where('status', '==', 'approved')
+            );
+            const innerCircleDocs = await getDocs(innerCircleQuery);
+
+            if (innerCircleDocs.size >= 5) {
+                throw new Error('Inner circle is full (max 5 members)');
+            }
+        }
+
+        // Create the membership
+        const membershipRef = doc(collection(db, 'circle_memberships'));
+        await setDoc(membershipRef, {
+            id: membershipRef.id,
+            ownerId,
+            memberId,
+            circleType,
+            status: 'pending', // All invites require approval
+            createdAt: Date.now()
+        });
+
+        // Send notification to the invited user
+        await DBService.createNotification({
+            userId: memberId,
+            senderId: ownerId,
+            type: 'circle_invite',
+            text: `invited you to their ${circleType} circle`
+        });
+
+        // Trigger push notification
+        const owner = await DBService.getUserById(ownerId);
+        if (owner) {
+            await DBService.sendPushNotification({
+                receiverId: memberId,
+                title: 'Circle Invite',
+                body: `${owner.fullName} invited you to their ${circleType} circle`,
+                data: {
+                    type: 'circle_invite',
+                    ownerId,
+                    circleType
+                }
+            });
+        }
+    }
+
+    /**
+     * Approve a pending circle invite
+     */
+    static async approveCircleInvite(params: {
+        membershipId: string;
+        currentUserId: string;
+    }): Promise<void> {
+        const { membershipId, currentUserId } = params;
+
+        const membershipRef = doc(db, 'circle_memberships', membershipId);
+        const membershipSnap = await getDoc(membershipRef);
+
+        if (!membershipSnap.exists()) {
+            throw new Error('Membership not found');
+        }
+
+        const membership = membershipSnap.data();
+
+        // Only the member being invited can approve
+        if (membership.memberId !== currentUserId) {
+            throw new Error('Unauthorized: Only the invited user can approve');
+        }
+
+        if (membership.status !== 'pending') {
+            throw new Error('Invite is not pending');
+        }
+
+        // Check inner circle limit again (defensive)
+        if (membership.circleType === 'inner') {
+            const innerCircleQuery = query(
+                collection(db, 'circle_memberships'),
+                where('ownerId', '==', membership.ownerId),
+                where('circleType', '==', 'inner'),
+                where('status', '==', 'approved')
+            );
+            const innerCircleDocs = await getDocs(innerCircleQuery);
+
+            if (innerCircleDocs.size >= 5) {
+                throw new Error('Inner circle is now full');
+            }
+        }
+
+        await updateDoc(membershipRef, {
+            status: 'approved',
+            updatedAt: Date.now()
+        });
+
+        // Notify the circle owner that invite was accepted
+        await DBService.createNotification({
+            userId: membership.ownerId,
+            senderId: currentUserId,
+            type: 'circle_invite',
+            text: `accepted your ${membership.circleType} circle invite`
+        });
+    }
+
+    /**
+     * Reject a pending circle invite
+     */
+    static async rejectCircleInvite(params: {
+        membershipId: string;
+        currentUserId: string;
+    }): Promise<void> {
+        const { membershipId, currentUserId } = params;
+
+        const membershipRef = doc(db, 'circle_memberships', membershipId);
+        const membershipSnap = await getDoc(membershipRef);
+
+        if (!membershipSnap.exists()) {
+            throw new Error('Membership not found');
+        }
+
+        const membership = membershipSnap.data();
+
+        // Only the member being invited can reject
+        if (membership.memberId !== currentUserId) {
+            throw new Error('Unauthorized: Only the invited user can reject');
+        }
+
+        // Delete the membership
+        await deleteDoc(membershipRef);
+    }
+
+    /**
+     * Remove a member from your circle
+     */
+    static async removeMember(params: {
+        membershipId: string;
+        currentUserId: string;
+    }): Promise<void> {
+        const { membershipId, currentUserId } = params;
+
+        const membershipRef = doc(db, 'circle_memberships', membershipId);
+        const membershipSnap = await getDoc(membershipRef);
+
+        if (!membershipSnap.exists()) {
+            throw new Error('Membership not found');
+        }
+
+        const membership = membershipSnap.data();
+
+        // Only the circle owner can remove members
+        if (membership.ownerId !== currentUserId) {
+            throw new Error('Unauthorized: Only the circle owner can remove members');
+        }
+
+        await deleteDoc(membershipRef);
+    }
+
+    /**
+     * Move a member between circles
+     */
+    static async moveMember(params: {
+        membershipId: string;
+        newCircleType: 'inner' | 'close' | 'outer';
+        currentUserId: string;
+    }): Promise<void> {
+        const { membershipId, newCircleType, currentUserId } = params;
+
+        const membershipRef = doc(db, 'circle_memberships', membershipId);
+        const membershipSnap = await getDoc(membershipRef);
+
+        if (!membershipSnap.exists()) {
+            throw new Error('Membership not found');
+        }
+
+        const membership = membershipSnap.data();
+
+        // Only the circle owner can move members
+        if (membership.ownerId !== currentUserId) {
+            throw new Error('Unauthorized: Only the circle owner can move members');
+        }
+
+        if (membership.status !== 'approved') {
+            throw new Error('Cannot move pending memberships');
+        }
+
+        // Check inner circle limit if moving TO inner circle
+        if (newCircleType === 'inner' && membership.circleType !== 'inner') {
+            const innerCircleQuery = query(
+                collection(db, 'circle_memberships'),
+                where('ownerId', '==', membership.ownerId),
+                where('circleType', '==', 'inner'),
+                where('status', '==', 'approved')
+            );
+            const innerCircleDocs = await getDocs(innerCircleQuery);
+
+            if (innerCircleDocs.size >= 5) {
+                throw new Error('Inner circle is full (max 5 members)');
+            }
+        }
+
+        await updateDoc(membershipRef, {
+            circleType: newCircleType,
+            updatedAt: Date.now()
+        });
+    }
+
+    /**
+     * Get all my circles organized by type
+     */
+    static async getMyCircles(userId: string): Promise<{
+        inner: User[];
+        close: User[];
+        outer: User[];
+    }> {
+        const membershipsQuery = query(
+            collection(db, 'circle_memberships'),
+            where('ownerId', '==', userId),
+            where('status', '==', 'approved')
+        );
+
+        const snapshot = await getDocs(membershipsQuery);
+
+        const inner: User[] = [];
+        const close: User[] = [];
+        const outer: User[] = [];
+
+        for (const docSnap of snapshot.docs) {
+            const membership = docSnap.data();
+            const user = await DBService.getUserById(membership.memberId);
+
+            if (user) {
+                switch (membership.circleType) {
+                    case 'inner':
+                        inner.push(user);
+                        break;
+                    case 'close':
+                        close.push(user);
+                        break;
+                    case 'outer':
+                        outer.push(user);
+                        break;
+                }
+            }
+        }
+
+        return { inner, close, outer };
+    }
+
+    /**
+     * Get pending invites sent to me
+     */
+    static async getPendingInvites(userId: string): Promise<Array<{
+        membership: any;
+        sender: User | null;
+    }>> {
+        const invitesQuery = query(
+            collection(db, 'circle_memberships'),
+            where('memberId', '==', userId),
+            where('status', '==', 'pending')
+        );
+
+        const snapshot = await getDocs(invitesQuery);
+        const invites: Array<{ membership: any; sender: User | null }> = [];
+
+        for (const docSnap of snapshot.docs) {
+            const membership = docSnap.data();
+            const sender = await DBService.getUserById(membership.ownerId);
+            invites.push({ membership, sender });
+        }
+
+        return invites;
+    }
+
+    /**
+     * Check if a user has permission for a specific action
+     */
+    static async checkPermission(params: {
+        ownerId: string;
+        memberId: string;
+        permission: 'messaging' | 'snaps' | 'calls' | 'mood';
+    }): Promise<boolean> {
+        const { ownerId, memberId, permission } = params;
+
+        // Get the membership
+        const membershipQuery = query(
+            collection(db, 'circle_memberships'),
+            where('ownerId', '==', ownerId),
+            where('memberId', '==', memberId),
+            where('status', '==', 'approved')
+        );
+
+        const snapshot = await getDocs(membershipQuery);
+
+        if (snapshot.empty) {
+            return false; // Not in any circle
+        }
+
+        const membership = snapshot.docs[0].data();
+        const circleType = membership.circleType;
+
+        // Permission matrix
+        switch (permission) {
+            case 'messaging':
+                return true; // All circles allow messaging
+            case 'snaps':
+                return circleType === 'inner' || circleType === 'close';
+            case 'calls':
+                return circleType === 'inner' || circleType === 'close';
+            case 'mood':
+                return circleType === 'inner';
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Get circle type for a specific member
+     */
+    static async getCircleType(params: {
+        ownerId: string;
+        memberId: string;
+    }): Promise<'inner' | 'close' | 'outer' | null> {
+        const { ownerId, memberId } = params;
+
+        const membershipQuery = query(
+            collection(db, 'circle_memberships'),
+            where('ownerId', '==', ownerId),
+            where('memberId', '==', memberId),
+            where('status', '==', 'approved')
+        );
+
+        const snapshot = await getDocs(membershipQuery);
+
+        if (snapshot.empty) {
+            return null;
+        }
+
+        return snapshot.docs[0].data().circleType;
     }
 }

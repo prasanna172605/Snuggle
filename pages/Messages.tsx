@@ -56,23 +56,10 @@ const Messages: React.FC<MessagesProps> = ({ currentUser, onChatSelect, onUserCl
             setChatUsers(users);
             setLastMessages(msgs);
         } else {
-            // Fallback: Load Friends (Mutual Follows) if no chats exist yet
-            const allUsers = await DBService.getUsers();
-            const mutualUsers = [];
-            for (const u of allUsers) {
-                if (u.id !== currentUser.id && await DBService.isMutualFollow(currentUser.id, u.id)) {
-                    mutualUsers.push(u);
-                }
-            }
-            setChatUsers(mutualUsers);
-
-            // Load last messages for friends (fallback query)
-            const msgs: Record<string, Message | null> = {};
-            for (const u of mutualUsers) {
-                const actualLastMsg = await DBService.getLastMessage(currentUser.id, u.id);
-                msgs[u.id] = actualLastMsg;
-            }
-            setLastMessages(msgs);
+            // DEPRECATED: Fallback to mutual follows removed - using Circles now
+            // No chats exist yet, show empty state
+            setChatUsers([]);
+            setLastMessages({});
         }
 
         setLoading(false);

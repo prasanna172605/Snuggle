@@ -41,12 +41,43 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
   const iceCandidatesQueue = useRef<RTCIceCandidateInit[]>([]);
   const qualityMonitorInterval = useRef<NodeJS.Timeout | null>(null);
 
+  // Generate unique device ID to prevent multi-device conflicts
+  const deviceId = useRef<string>(
+    localStorage.getItem('snuggle_device_id') ||
+    (() => {
+      const id = crypto.randomUUID();
+      localStorage.setItem('snuggle_device_id', id);
+      return id;
+    })()
+  );
+
+
+
+
   const servers = {
     iceServers: [
+      // Google STUN servers
       {
-        urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'],
+        urls: 'stun:stun.l.google.com:19302',
+      },
+      // Multiple free TURN servers for redundancy
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelay',
+        credential: 'openrelay',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelay',
+        credential: 'openrelay',
+      },
+      {
+        urls: 'turn:relay1.expressturn.com:3478',
+        username: 'efF8BXPVVQ2PZLF2JY',
+        credential: 'kHQt4nGYvmPTXdMz',
       },
     ],
+    iceCandidatePoolSize: 10,
   };
 
   useEffect(() => {
@@ -82,26 +113,53 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
     };
 
     pc.ontrack = (event) => {
-      console.log('[WebRTC] Received track:', event.track.kind, 'Enabled:', event.track.enabled);
+      console.log('[WebRTC] ontrack fired:', event.track.kind, 'enabled:', event.track.enabled);
+      console.log('[WebRTC] event.streams:', event.streams?.length);
+
       if (event.streams && event.streams[0]) {
-        console.log('[WebRTC] Remote stream tracks:', event.streams[0].getTracks().map(t => `${t.kind}:${t.enabled}`));
-        setRemoteStream(event.streams[0]);
+        const stream = event.streams[0];
+        console.log('[WebRTC] Setting remote stream with', stream.getTracks().length, 'tracks');
+
+        // CRITICAL: Set the stream immediately
+        setRemoteStream(stream);
+
+        // Ensure tracks are enabled
+        stream.getTracks().forEach(track => {
+          console.log(`[WebRTC] Track ${track.kind}: enabled=${track.enabled}, readyState=${track.readyState}`);
+          if (!track.enabled) {
+            track.enabled = true;
+            console.log(`[WebRTC] Force-enabled ${track.kind} track`);
+          }
+        });
+      } else {
+        console.error('[WebRTC] ❌ ontrack fired but no streams! event:', event);
       }
+
+      // Force a state update to ensure React re-renders
+      console.log('[WebRTC] Current remoteStream state after ontrack:', remoteStream ? 'EXISTS' : 'NULL');
     };
 
     pc.onconnectionstatechange = () => {
-      console.log('[WebRTC] Connection state:', pc.connectionState);
+      console.log('[WebRTC] 🔌 Connection state:', pc.connectionState);
       if (pc.connectionState === 'connected') {
-        // Start monitoring quality when connected
+        console.log('[WebRTC] ✅ CONNECTED! Media should flow now');
         startQualityMonitoring();
-        // Set start time if not already set
         if (callStartTime.current === 0) {
           callStartTime.current = Date.now();
         }
       } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        console.error('[WebRTC] ❌ Connection FAILED or DISCONNECTED');
         stopQualityMonitoring();
         endCall();
       }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('[WebRTC] 🧊 ICE connection state:', pc.iceConnectionState);
+    };
+
+    pc.onicegatheringstatechange = () => {
+      console.log('[WebRTC] 📡 ICE gathering state:', pc.iceGatheringState);
     };
 
     peerConnection.current = pc;
@@ -215,12 +273,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
+      // Set initiator BEFORE sending offer
+      callInitiator.current = currentUser.id;
+
       DBService.sendSignal({
         type: 'offer',
         sdp: offer,
         senderId: currentUser.id,
         receiverId: receiverId,
         callType: type,
+        deviceId: deviceId.current,
         timestamp: Date.now(),
       });
 
@@ -274,6 +336,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
         } else {
           iceCandidatesQueue.current.push(data.candidate);
         }
+      }
+    } else if (data.type === 'answered_elsewhere') {
+      // Another device answered the call, dismiss UI on this device
+      if (data.deviceId !== deviceId.current && incomingCall) {
+        console.log('[CallContext] Call answered on another device, dismissing');
+        setIncomingCall(null);
       }
     } else if (data.type === 'end' || data.type === 'reject' || data.type === 'busy') {
       cleanupCall();
@@ -359,6 +427,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
             sdp: answer,
             senderId: currentUser.id,
             receiverId: callerId,
+            answeringDeviceId: deviceId.current,
+            timestamp: Date.now(),
+          });
+
+          // Notify other devices that call was answered here
+          DBService.sendSignal({
+            type: 'answered_elsewhere',
+            senderId: currentUser.id,
+            receiverId: currentUser.id, // To self (other devices)
+            callerId: callerId,
+            deviceId: deviceId.current,
             timestamp: Date.now(),
           });
         }
@@ -379,9 +458,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
         video: type === 'video',
         audio: true,
       });
+
+      console.log('[CallContext] Got local stream with', stream.getTracks().length, 'tracks');
       setLocalStream(stream);
       setIncomingCall(null);
       setActiveCall({ userId: callerId, type });
+
+      // SET CALL START TIME IMMEDIATELY when accepting
+      callStartTime.current = Date.now();
+      callInitiator.current = callerId;
+      console.log('[CallContext] Call start time set on accept:', callStartTime.current);
 
       const pc = createPeerConnection();
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
@@ -397,6 +483,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
           sdp: answer,
           senderId: currentUser.id,
           receiverId: callerId,
+          answeringDeviceId: deviceId.current,
+          timestamp: Date.now(),
+        });
+
+        // Notify other devices that call was answered here
+        DBService.sendSignal({
+          type: 'answered_elsewhere',
+          senderId: currentUser.id,
+          receiverId: currentUser.id, // To self (other devices)
+          callerId: callerId,
+          deviceId: deviceId.current,
           timestamp: Date.now(),
         });
       }
