@@ -18,6 +18,28 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
     const [userPosts, setUserPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
     const [pendingInvite, setPendingInvite] = useState<{ id: string; circleType: string } | null>(null);
+    const [showCircleModal, setShowCircleModal] = useState(false);
+    const [sendingInvite, setSendingInvite] = useState(false);
+
+    const checkPendingStatus = async () => {
+        if (!currentUser || !userId || isOwnProfile) return;
+
+        try {
+            const invites = await CircleService.getPendingInvitesSent(currentUser.id);
+            const pendingToThisUser = invites.find((inv: any) => inv.membership.memberId === userId);
+
+            if (pendingToThisUser) {
+                setPendingInvite({
+                    id: pendingToThisUser.membership.id,
+                    circleType: pendingToThisUser.membership.circleType
+                });
+            } else {
+                setPendingInvite(null);
+            }
+        } catch (error) {
+            console.error("Error checking pending invites:", error);
+        }
+    };
 
     useEffect(() => {
         const loadProfile = async () => {
@@ -25,22 +47,7 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
                 if (userId && !isOwnProfile) {
                     const fetchedUser = await DBService.getUserById(userId);
                     setUser(fetchedUser);
-
-                    // Check for pending invite
-                    if (fetchedUser && currentUser) {
-                        try {
-                            const invites = await CircleService.getPendingInvitesSent(currentUser.id);
-                            const pendingToThisUser = invites.find(inv => inv.membership.memberId === userId);
-                            if (pendingToThisUser) {
-                                setPendingInvite({
-                                    id: pendingToThisUser.membership.id,
-                                    circleType: pendingToThisUser.membership.circleType
-                                });
-                            }
-                        } catch (err) {
-                            console.error("Error checking pending invites:", err);
-                        }
-                    }
+                    await checkPendingStatus();
                 } else if (isOwnProfile && currentUser) {
                     setUser(currentUser);
                 }
@@ -61,6 +68,8 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
     const handleRevokeInvite = async () => {
         if (!pendingInvite || !currentUser) return;
 
+        if (!confirm('Are you sure you want to revoke this invitation?')) return;
+
         try {
             await CircleService.revokeCircleInvite({
                 membershipId: pendingInvite.id,
@@ -69,6 +78,27 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
             setPendingInvite(null);
         } catch (error: any) {
             alert(error.message || 'Failed to revoke invite');
+        }
+    };
+
+    const handleSendInvite = async (circleType: string) => {
+        if (!currentUser || !user) return;
+
+        setSendingInvite(true);
+        try {
+            await CircleService.sendCircleInvite({
+                ownerId: currentUser.id,
+                memberId: user.id,
+                circleType: circleType.toLowerCase() as any,
+            });
+
+            await checkPendingStatus();
+            setShowCircleModal(false);
+            alert(`Invited ${user.fullName} to your ${circleType} circle!`);
+        } catch (error: any) {
+            alert(error.message || 'Failed to send invite');
+        } finally {
+            setSendingInvite(false);
         }
     };
 
@@ -173,7 +203,7 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
                                         Message
                                     </button>
                                     <button
-                                        onClick={() => navigate('/circles/add')}
+                                        onClick={() => setShowCircleModal(true)}
                                         className="bg-cyan-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-cyan-600 transition-colors flex items-center justify-center gap-2"
                                     >
                                         <UserPlus className="w-4 h-4" />
@@ -218,6 +248,43 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
                     )}
                 </div>
             </div>
+
+            {/* Circle Selection Modal */}
+            {showCircleModal && (
+                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowCircleModal(false)}>
+                    <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[2rem] p-6 space-y-4 animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Add to Circle</h3>
+                            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Choose where to add {user.fullName}</p>
+                        </div>
+
+                        <div className="space-y-3 pt-2">
+                            {[
+                                { id: 'inner', label: 'Inner Circle', desc: 'Max 5 people • Highest trust', color: 'bg-amber-500 hover:bg-amber-600' },
+                                { id: 'close', label: 'Close Circle', desc: 'Trusted friends', color: 'bg-cyan-500 hover:bg-cyan-600' },
+                                { id: 'outer', label: 'Outer Circle', desc: 'General connections', color: 'bg-indigo-500 hover:bg-indigo-600' }
+                            ].map((circle) => (
+                                <button
+                                    key={circle.id}
+                                    onClick={() => handleSendInvite(circle.id)}
+                                    disabled={sendingInvite}
+                                    className={`${circle.color} w-full text-white p-4 rounded-2xl text-left transition-transform active:scale-95 flex flex-col disabled:opacity-50`}
+                                >
+                                    <span className="font-bold text-lg">{circle.label}</span>
+                                    <span className="text-white/80 text-sm">{circle.desc}</span>
+                                </button>
+                            ))}
+                        </div>
+
+                        <button
+                            onClick={() => setShowCircleModal(false)}
+                            className="w-full p-4 text-gray-500 font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 rounded-2xl transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
