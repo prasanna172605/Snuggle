@@ -1271,19 +1271,18 @@ export class DBService {
         }
     }
 
-    static async isMutualFollow(userId1: string, userId2: string): Promise<boolean> {
-        try {
-            const user1 = await this.getUserById(userId1);
-            const user2 = await this.getUserById(userId2);
-
-            if (!user1 || !user2) return false;
-
-            return user1.following.includes(userId2) && user2.following.includes(userId1);
-        } catch (error) {
-            console.error('Error checking mutual follow:', error);
-            return false;
-        }
-    }
+    // DEPRECATED: Using Circles now
+    // static async isMutualFollow(userId1: string, userId2: string): Promise<boolean> {
+    //     try {
+    //         const user1 = await this.getUserById(userId1);
+    //         const user2 = await this.getUserById(userId2);
+    //         if (!user1 || !user2) return false;
+    //         return user1.following.includes(userId2) && user2.following.includes(userId1);
+    //     } catch (error) {
+    //         console.error('Error checking mutual follow:', error);
+    //         return false;
+    //     }
+    // }
 
     // ===== WebRTC Call Methods =====
 
