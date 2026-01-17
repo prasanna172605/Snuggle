@@ -129,12 +129,6 @@ const Explore: React.FC<ExploreProps> = ({ currentUser, onNavigate }) => {
                                         <p className="text-xs text-gray-500 dark:text-gray-400">{user.fullName}</p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => handleFollowToggle(user.id)}
-                                    className={`p-2 rounded-lg transition-colors ${followingMap[user.id] ? 'bg-gray-200 dark:bg-dark-border text-gray-800 dark:text-gray-300' : 'bg-snuggle-500 text-white'}`}
-                                >
-                                    {followingMap[user.id] ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-                                </button>
                             </div>
                         ))
                     )}
