@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, X, ArrowLeft, Users } from 'lucide-react';
-import { DBService } from '../services/database';
+import { DBService, CircleService } from '../services/database';
 import { User } from '../types';
 import { auth } from '../services/firebase';
 
@@ -21,7 +21,7 @@ export default function CircleInvites() {
         if (!currentUserId) return;
 
         try {
-            const pendingInvites = await DBService.getPendingInvites(currentUserId);
+            const pendingInvites = await CircleService.getPendingInvites(currentUserId);
             setInvites(pendingInvites);
         } catch (error) {
             console.error('Failed to load invites:', error);
@@ -35,7 +35,7 @@ export default function CircleInvites() {
 
         setProcessingId(membershipId);
         try {
-            await DBService.approveCircleInvite({ membershipId, currentUserId });
+            await CircleService.approveCircleInvite({ membershipId, currentUserId });
             setInvites((prev) => prev.filter((inv) => inv.membership.id !== membershipId));
         } catch (error: any) {
             console.error('Failed to approve invite:', error);
@@ -50,7 +50,7 @@ export default function CircleInvites() {
 
         setProcessingId(membershipId);
         try {
-            await DBService.rejectCircleInvite({ membershipId, currentUserId });
+            await CircleService.rejectCircleInvite({ membershipId, currentUserId });
             setInvites((prev) => prev.filter((inv) => inv.membership.id !== membershipId));
         } catch (error: any) {
             console.error('Failed to reject invite:', error);
