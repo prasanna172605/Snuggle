@@ -203,35 +203,38 @@ const Notifications: React.FC<NotificationsProps> = ({ currentUser, onUserClick 
                         <p>No notifications yet</p>
                     </div>
                 ) : (
-                        const sender = senders[notif.senderId];
-                if (!sender) return null;
+                    <div className="divide-y divide-gray-50">
+                        {notifications.map(notif => {
+                            const sender = senders[notif.senderId];
+                            if (!sender) return null;
 
-                return (
-                <div
-                    key={notif.id}
-                    onClick={() => onUserClick?.(notif.senderId)}
-                    className={`flex items-start px-4 py-4 hover:bg-gray-50 transition-colors cursor-pointer ${!notif.read ? 'bg-blue-50/30' : ''}`}
-                >
-                    <div className="relative">
-                        <img src={sender.avatar} alt={sender.username} className="w-10 h-10 rounded-full object-cover border border-gray-100" />
-                        <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white ${getBgColor(notif.type)}`}>
-                            {getIcon(notif.type)}
-                        </div>
+                            return (
+                                <div
+                                    key={notif.id}
+                                    onClick={() => onUserClick?.(notif.senderId)}
+                                    className={`flex items-start px-4 py-4 hover:bg-gray-50 transition-colors cursor-pointer ${!notif.read ? 'bg-blue-50/30' : ''}`}
+                                >
+                                    <div className="relative">
+                                        <img src={sender.avatar} alt={sender.username} className="w-10 h-10 rounded-full object-cover border border-gray-100" />
+                                        <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white ${getBgColor(notif.type)}`}>
+                                            {getIcon(notif.type)}
+                                        </div>
+                                    </div>
+                                    <div className="ml-3 flex-1">
+                                        <p className="text-sm text-gray-800">
+                                            {notif.text}
+                                        </p>
+                                        <p className="text-xs text-gray-400 mt-1">{formatTime(notif.timestamp)}</p>
+                                    </div>
+                                    {notif.type === 'follow' && (
+                                        <div className="bg-gray-100 text-xs font-semibold px-3 py-1.5 rounded-lg text-gray-600">
+                                            Follower
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
-                    <div className="ml-3 flex-1">
-                        <p className="text-sm text-gray-800">
-                            {notif.text}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">{formatTime(notif.timestamp)}</p>
-                    </div>
-                    {notif.type === 'follow' && (
-                        <div className="bg-gray-100 text-xs font-semibold px-3 py-1.5 rounded-lg text-gray-600">
-                            Follower
-                        </div>
-                    )}
-                </div>
-                );
-                    })
                 )}
             </div>
         </div>
