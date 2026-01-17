@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, X, ArrowLeft, Users } from 'lucide-react';
-import { CircleService } from '../services/database';
+import { CircleService, DBService } from '../services/database';
 import { User } from '../types';
 import { auth } from '../services/firebase';
 
@@ -50,7 +50,7 @@ export default function CircleInvites() {
 
         setProcessingId(membershipId);
         try {
-            await CircleService.rejectCircleInvite({ membershipId, currentUserId });
+            await DBService.rejectCircleInvite({ membershipId, currentUserId });
             setInvites((prev) => prev.filter((inv) => inv.membership.id !== membershipId));
         } catch (error: any) {
             console.error('Failed to reject invite:', error);
