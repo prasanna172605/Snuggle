@@ -607,34 +607,31 @@ export class DBService {
         return postSnap.exists() ? postSnap.data() as Post : null;
     }
 
-    static async getFeed(userId: string, maxPosts: number = 20): Promise<import('../types').Post[]> {
-        const user = await this.getUserById(userId);
-        if (!user) return [];
-
-        // Get posts from users the current user follows
-        const following = [...user.following, userId]; // Include own posts
-
-        const q = query(
-            collection(db, 'posts'),
-            where('userId', 'in', following.slice(0, 10)), // Firestore limit
-            orderBy('createdAt', 'desc'),
-            limit(maxPosts)
-        );
-
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => {
-            const data = doc.data() as Post; // Local Post interface
-            return {
-                id: doc.id,
-                userId: data.userId,
-                imageUrl: data.imageUrl || '',
-                caption: data.caption,
-                likes: data.likes.length,
-                comments: data.commentCount,
-                timestamp: data.createdAt.toMillis()
-            } as import('../types').Post;
-        });
-    }
+    // DEPRECATED: Using Circles now - This method accessed user.following which no longer exists
+    // static async getFeed(userId: string, maxPosts: number = 20): Promise<import('../types').Post[]> {
+    //     const user = await this.getUserById(userId);
+    //     if (!user) return [];
+    //     const following = [...user.following, userId];
+    //     const q = query(
+    //         collection(db, 'posts'),
+    //         where('userId', 'in', following.slice(0, 10)),
+    //         orderBy('createdAt', 'desc'),
+    //         limit(maxPosts)
+    //     );
+    //     const querySnapshot = await getDocs(q);
+    //     return querySnapshot.docs.map(doc => {
+    //         const data = doc.data() as Post;
+    //         return {
+    //             id: doc.id,
+    //             userId: data.userId,
+    //             imageUrl: data.imageUrl || '',
+    //             caption: data.caption,
+    //             likes: data.likes.length,
+    //             comments: data.commentCount,
+    //             timestamp: data.createdAt.toMillis()
+    //         } as import('../types').Post;
+    //     });
+    // }
 
     static async getUserPosts(userId: string, maxPosts: number = 20): Promise<import('../types').Post[]> {
         const q = query(
