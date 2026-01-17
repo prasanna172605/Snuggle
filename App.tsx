@@ -17,8 +17,6 @@ const Chat = React.lazy(() => import('./pages/Chat'));
 const Settings = React.lazy(() => import('./pages/Settings'));
 const Create = React.lazy(() => import('./pages/Create'));
 const Notifications = React.lazy(() => import('./pages/Notifications'));
-const Circles = React.lazy(() => import('./pages/Circles'));
-const CircleInvites = React.lazy(() => import('./pages/CircleInvites'));
 const AddToCircle = React.lazy(() => import('./pages/AddToCircle'));
 const MyCircle = React.lazy(() => import('./pages/MyCircle'));
 const BottomNav = React.lazy(() => import('./components/BottomNav'));
@@ -164,8 +162,6 @@ const AppContent = ({
             <Route path="/chat/:userId" element={<ChatWrapper currentUser={currentUser} />} />
             <Route path="/profile" element={<Profile user={currentUser} currentUser={currentUser} isOwnProfile={true} onLogout={onLogout} />} />
             <Route path="/profile/:userId" element={<Profile currentUser={currentUser} isOwnProfile={false} />} />
-            <Route path="/circles" element={<Circles />} />
-            <Route path="/circles/invites" element={<CircleInvites />} />
             <Route path="/circles/add" element={<AddToCircle />} />
             <Route path="/my-circle" element={<MyCircle />} />
             <Route path="/create" element={<CreateWrapper currentUser={currentUser} />} />
