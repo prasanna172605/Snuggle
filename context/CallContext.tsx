@@ -81,8 +81,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode; currentUser: Us
   };
 
   useEffect(() => {
-    if (!currentUser) {
-      console.log('[CallContext] No currentUser yet, skipping signal subscription');
+    if (!currentUser?.id) {
+      console.log('[CallContext] No currentUser.id yet, skipping signal subscription');
       return;
     }
 
