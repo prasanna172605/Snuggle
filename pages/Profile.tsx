@@ -82,13 +82,13 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
     };
 
     const handleSendInvite = async (circleType: string) => {
-        if (!currentUser || !user) return;
+        if (!currentUser || !userId) return;
 
         setSendingInvite(true);
         try {
             await CircleService.sendCircleInvite({
                 ownerId: currentUser.id,
-                memberId: user.id,
+                memberId: userId!, // Use userId from URL params
                 circleType: circleType.toLowerCase() as any,
             });
 
