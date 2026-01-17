@@ -86,13 +86,13 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen pb-20 dark:bg-black transition-colors">
+    <div className="bg-gray-50 min-h-screen pb-24 dark:bg-black transition-colors">
       {/* Header */}
-      <div className="bg-white dark:bg-dark-card px-4 py-3 border-b border-gray-200 dark:border-dark-border flex items-center sticky top-0 z-10 transition-colors">
-        <button onClick={onBack} className="mr-3 text-gray-600 dark:text-gray-300 hover:text-snuggle-600">
-          <ArrowLeft className="w-6 h-6" />
+      <div className="bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800 px-6 py-4 flex items-center sticky top-0 z-10 transition-colors">
+        <button onClick={onBack} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full transition-colors">
+          <ArrowLeft className="w-6 h-6 text-gray-700 dark:text-gray-200" />
         </button>
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white">Settings</h2>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-white ml-3">Settings</h2>
       </div>
 
       <div className="p-4 space-y-6">
