@@ -132,8 +132,8 @@ export default function AddToCircle() {
                                 key={option.value}
                                 onClick={() => setSelectedCircle(option.value)}
                                 className={`w-full p-4 rounded-xl border-2 transition-all text-left ${selectedCircle === option.value
-                                        ? `${option.color} border-current`
-                                        : 'bg-white border-gray-200 hover:border-gray-300'
+                                    ? `${option.color} border-current`
+                                    : 'bg-white border-gray-200 hover:border-gray-300'
                                     }`}
                             >
                                 <div className="font-semibold text-gray-900 mb-1">{option.label}</div>
@@ -159,14 +159,19 @@ export default function AddToCircle() {
                                     key={user.id}
                                     className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm"
                                 >
-                                    <img
-                                        src={user.avatar}
-                                        alt={user.fullName}
-                                        className="w-12 h-12 rounded-full object-cover"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-semibold text-gray-900 truncate">{user.fullName}</p>
-                                        <p className="text-sm text-gray-500 truncate">@{user.username}</p>
+                                    <div
+                                        onClick={() => navigate(`/profile/${user.id}`)}
+                                        className="flex items-center gap-4 flex-1 cursor-pointer"
+                                    >
+                                        <img
+                                            src={user.avatar}
+                                            alt={user.fullName}
+                                            className="w-12 h-12 rounded-full object-cover"
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-semibold text-gray-900 truncate">{user.fullName}</p>
+                                            <p className="text-sm text-gray-500 truncate">@{user.username}</p>
+                                        </div>
                                     </div>
                                     <button
                                         onClick={() => handleSendInvite(user.id)}

@@ -14,15 +14,28 @@ interface ProfileProps {
 const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnProfile, onLogout }) => {
     const { userId } = useParams();
     const navigate = useNavigate();
-    const [user, setUser] = useState<User | null>(propUser || null);
+    const [user, setUser] = useState<User | null>(isOwnProfile ? currentUser : null);
     const [userPosts, setUserPosts] = useState<Post[]>([]);
-    const [loading, setLoading] = useState(!propUser);
+    const [loading, setLoading] = useState(true);
+    const [pendingInvite, setPendingInvite] = useState<{ id: string; circleType: string } | null>(null);
 
     useEffect(() => {
         const loadProfile = async () => {
             if (userId && !isOwnProfile) {
                 const fetchedUser = await DBService.getUserById(userId);
                 setUser(fetchedUser);
+
+                // Check for pending invite
+                if (currentUser) {
+                    const invites = await CircleService.getPendingInvitesSent(currentUser.id);
+                    const pendingToThisUser = invites.find(inv => inv.membership.memberId === userId);
+                    if (pendingToThisUser) {
+                        setPendingInvite({
+                            id: pendingToThisUser.membership.id,
+                            circleType: pendingToThisUser.membership.circleType
+                        });
+                    }
+                }
             } else if (isOwnProfile && currentUser) {
                 setUser(currentUser);
             }
@@ -35,6 +48,20 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
 
         loadProfile();
     }, [userId, currentUser, isOwnProfile]);
+
+    const handleRevokeInvite = async () => {
+        if (!pendingInvite || !currentUser) return;
+
+        try {
+            await CircleService.revokeCircleInvite({
+                membershipId: pendingInvite.id,
+                currentUserId: currentUser.id
+            });
+            setPendingInvite(null);
+        } catch (error: any) {
+            alert(error.message || 'Failed to revoke invite');
+        }
+    };
 
     if (loading || !user) {
         return (
@@ -112,18 +139,39 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 gap-2">
-                            <button
-                                className="bg-cyan-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-cyan-600 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <MessageCircle className="w-4 h-4" />
-                                Message
-                            </button>
-                            <button
-                                className="bg-purple-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-purple-600 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <UserPlus className="w-4 h-4" />
-                                Add to Circle
-                            </button>
+                            {pendingInvite ? (
+                                <>
+                                    <button
+                                        className="bg-gray-100 dark:bg-dark-bg text-gray-900 dark:text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-gray-200 dark:hover:bg-dark-border transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <MessageCircle className="w-4 h-4" />
+                                        Message
+                                    </button>
+                                    <button
+                                        onClick={handleRevokeInvite}
+                                        className="bg-red-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <UserPlus className="w-4 h-4" />
+                                        Revoke Invite
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        className="bg-gray-100 dark:bg-dark-bg text-gray-900 dark:text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-gray-200 dark:hover:bg-dark-border transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <MessageCircle className="w-4 h-4" />
+                                        Message
+                                    </button>
+                                    <button
+                                        onClick={() => navigate('/circles/add')}
+                                        className="bg-cyan-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-cyan-600 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <UserPlus className="w-4 h-4" />
+                                        Add to Circle
+                                    </button>
+                                </>
+                            )}
                         </div>
                     )}
                 </div>
