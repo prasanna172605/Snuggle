@@ -330,7 +330,7 @@ const Profile: React.FC<ProfileProps> = ({ user: propUser, currentUser, isOwnPro
 
                     {isOwnProfile && (
                         <div className="absolute top-4 right-4 z-20 flex gap-2">
-                            <button onClick={onLogout} title="Logout" className="p-2 bg-white/80 dark:bg-black/50 backdrop-blur rounded-full hover:bg-red-50 hover:text-red-500 transition-colors shadow-sm">
+                            <button onClick={() => navigate('/settings')} title="Settings" className="p-2 bg-white/80 dark:bg-black/50 backdrop-blur rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shadow-sm">
                                 <Settings className="w-5 h-5" />
                             </button>
                         </div>

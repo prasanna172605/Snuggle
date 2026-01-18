@@ -602,6 +602,141 @@ export class DBService {
     }
 
 
+    // ==================== SETTINGS OPERATIONS ====================
+
+    static async updateNotificationPreferences(
+        userId: string,
+        preferences: {
+            email?: boolean;
+            push?: boolean;
+            frequency?: 'realtime' | 'hourly' | 'daily';
+            types?: {
+                followers?: boolean;
+                messages?: boolean;
+                likes?: boolean;
+                mentions?: boolean;
+            }
+        }
+    ): Promise<void> {
+        const token = await this.getCurrentToken();
+        const response = await fetch('/api/v1/settings/notifications', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(preferences)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to update notification preferences');
+        }
+    }
+
+    static async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+        const token = await this.getCurrentToken();
+        const response = await fetch('/api/v1/settings/password', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ currentPassword, newPassword })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to change password');
+        }
+    }
+
+    static async getActiveSessions(): Promise<any[]> {
+        const token = await this.getCurrentToken();
+        const response = await fetch('/api/v1/settings/sessions', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to fetch sessions');
+        }
+
+        const data = await response.json();
+        return data.data.sessions;
+    }
+
+    static async revokeSession(sessionId: string): Promise<void> {
+        const token = await this.getCurrentToken();
+        const response = await fetch(`/api/v1/settings/sessions/${sessionId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to revoke session');
+        }
+    }
+
+    static async exportUserData(): Promise<any> {
+        const token = await this.getCurrentToken();
+        const response = await fetch('/api/v1/settings/export-data', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to export data');
+        }
+
+        const data = await response.json();
+        return data.data;
+    }
+
+    static async deleteUserAccount(password: string): Promise<void> {
+        const token = await this.getCurrentToken();
+        // We verify the username on the frontend, here we just send what the API expects.
+        // The API expects 'confirmUsername' and 'password'. 
+        // Wait, the client usually confirms username in UI, but the API endpoint I wrote checks it again.
+        // Let's assume the calling component handles getting the username to confirm against.
+        // But wait, my API endpoint requires `confirmUsername` in the body.
+        // I should probably fetch the current user's username here or require it as an argument.
+        // Better to require it as an argument to be safe and explicit.
+
+        // REVISITING API:
+        // router.delete('/account', async (req, res, next) => {
+        //     const { confirmUsername, password } = req.body;
+
+        // So I'll update the signature.
+        throw new Error("Method signature mismatch. Use overloaded method.");
+    }
+
+    static async deleteAccountWithConfirmation(confirmUsername: string, password: string): Promise<void> {
+        const token = await this.getCurrentToken();
+        const response = await fetch('/api/v1/settings/account', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ confirmUsername, password })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to delete account');
+        }
+    }
+
+
     static async uploadAvatar(userId: string, file: File): Promise<string> {
         const fileRef = ref(storage, `avatars/${userId}_${Date.now()}`);
         await uploadBytes(fileRef, file);
