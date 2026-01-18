@@ -92,18 +92,23 @@ export interface Story {
 export interface Notification {
   id: string;
   userId: string;
-  type: 'like' | 'comment' | 'follow' | 'mention' | 'system';
-  title?: string;
-  body?: string;
+  type: 'info' | 'success' | 'warning' | 'error' | 'like' | 'comment' | 'follow' | 'mention' | 'system';
+  title: string;
+  message: string;
+  data?: Record<string, any>;
 
-  // Sender info (various aliases used)
-  fromUserId?: string;
-  senderId?: string; // Alias
+  // Legacy / derived fields compatibility
+  body?: string; // mapped to message
+  text?: string; // mapped to message
 
+  // Sender info
+  senderId?: string;
   fromUsername?: string;
   fromUserAvatar?: string;
-  resourceId?: string;
-  read: boolean;
+  fromUserId?: string;
+
+  isRead: boolean;
+  read?: boolean; // mapped to isRead
   createdAt: any;
 }
 

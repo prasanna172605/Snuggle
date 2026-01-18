@@ -54,6 +54,7 @@ import authRouter from '../backend/routes/auth.js';
 import userRouter from '../backend/routes/users.js';
 import contentRouter from '../backend/routes/content.js';
 import settingsRouter from '../backend/routes/settings.js';
+import notificationRouter from '../backend/routes/notifications.js';
 
 // Health Check
 app.get('/api/health', (req, res) => {
@@ -65,6 +66,7 @@ app.use('/api/v1/users', userRouter);
 app.use('/api/v1/content', contentRouter);
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/settings', settingsRouter);
+app.use('/api/v1/notifications', notificationRouter);
 
 // Lazy-loaded Push Handler
 app.post('/api/send-push', verifyToken, catchAsync(async (req, res, next) => {

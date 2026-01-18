@@ -30,7 +30,8 @@ import { ref as rtdbRef, set, onDisconnect, serverTimestamp as rtdbServerTimesta
 
 
 // Types
-import { User, Post as AppPost, Story as AppStory, Notification as AppNotification, CoreContent, ContentType, ContentStatus, ContentPriority } from '../types';
+import { User, Post, Story, Comment as AppComment, CoreContent, ContentType, ContentStatus, ContentPriority } from '../types';
+import type { Notification } from '../types';
 
 export interface Call {
     id: string;
@@ -96,59 +97,6 @@ export interface DBUser {
         twitter?: string;
         website?: string;
     };
-}
-
-export interface Post {
-    id: string;
-    userId: string;
-    username: string;
-    userAvatar?: string;
-    caption: string;
-    imageUrl?: string;
-    likes: string[];
-    commentCount: number;
-    createdAt: Timestamp;
-}
-
-export interface Comment {
-    id: string;
-    postId: string;
-    userId: string;
-    username: string;
-    text: string;
-    createdAt: Timestamp;
-}
-
-// Local Message interface removed to use shared types
-// export interface Message { ... }
-
-
-export interface Story {
-    id: string;
-    userId: string;
-    username: string;
-    userAvatar?: string;
-    mediaUrl: string; // Used by DB
-    imageUrl?: string; // Mapped for Feed compatibility
-    mediaType: 'image' | 'video';
-    createdAt: Timestamp;
-    expiresAt: Timestamp;
-    views: string[];
-}
-
-
-export interface Notification {
-    id: string;
-    userId: string;
-    type: 'like' | 'comment' | 'follow' | 'message' | 'circle_invite';
-    senderId: string;
-    text: string;
-    read: boolean;
-    createdAt: Timestamp;
-    // Optional legacy fields if needed
-    fromUsername?: string;
-    fromUserAvatar?: string;
-    postId?: string;
 }
 
 // Database Service Class
@@ -789,7 +737,12 @@ export class DBService {
         return updatedUser;
     }
 
-    static subscribeToNotifications(userId: string, callback: (notifications: import('../types').Notification[]) => void): () => void {
+
+    // ==================== NOTIFICATION OPERATIONS ====================
+
+
+
+    static subscribeToNotifications(userId: string, callback: (notifications: Notification[]) => void): () => void {
         const q = query(
             collection(db, 'notifications'),
             where('userId', '==', userId),
@@ -799,24 +752,84 @@ export class DBService {
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const notifications = snapshot.docs.map(doc => {
-                const data = doc.data() as any;
-                // Map Firestore data to application Notification type
-                const notif: import('../types').Notification = {
+                const data = doc.data();
+                return {
                     id: doc.id,
-                    userId: data.userId,
-                    senderId: data.senderId || data.fromUserId,
-                    type: data.type,
-                    body: data.text || data.message || data.body,
-                    createdAt: data.createdAt?.toMillis() || Date.now(),
-                    read: data.read
-                };
-                return notif;
+                    ...data,
+                    isRead: data.isRead || data.read || false,
+                    // Ensure createdAt is handled safely if it is missing or different type
+                    createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now(),
+                } as Notification;
             });
             callback(notifications);
+        }, (error) => {
+            console.error("Error subscribing to notifications:", error);
+            callback([]);
         });
 
         return unsubscribe;
     }
+
+    static async createNotification(notificationData: Omit<import('../types').Notification, 'id' | 'read' | 'createdAt' | 'isRead'>): Promise<import('../types').Notification> {
+        const token = await this.getCurrentToken();
+        const response = await fetch('/api/v1/notifications', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(notification)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to create notification');
+        }
+    }
+
+    static async markNotificationRead(notificationId: string): Promise<void> {
+        const token = await this.getCurrentToken();
+        const response = await fetch(`/api/v1/notifications/${notificationId}/read`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to mark notification as read');
+        }
+    }
+
+    static async markAllNotificationsRead(): Promise<void> {
+        const token = await this.getCurrentToken();
+        const response = await fetch('/api/v1/notifications/read-all', {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to mark all notifications as read');
+        }
+    }
+
+    static async deleteNotification(notificationId: string): Promise<void> {
+        const token = await this.getCurrentToken();
+        const response = await fetch(`/api/v1/notifications/${notificationId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete notification');
+        }
+    }
+
+
 
 
     // ==================== FOLLOW SYSTEM ====================
@@ -840,7 +853,11 @@ export class DBService {
                 userId: followingId,
                 type: 'follow',
                 senderId: followerId,
-                text: `${follower.username} started following you`
+                title: 'New Follower',
+                message: `${follower.username} started following you`,
+                data: {
+                    url: `/profile/${followerId}`
+                }
             });
         }
     }
@@ -928,9 +945,9 @@ export class DBService {
                 username: data.username || 'Unknown',
                 imageUrl: data.imageUrl || '',
                 caption: data.caption,
-                likes: data.likes.length,
-                commentCount: data.commentCount,
-                comments: data.commentCount, // map for compatibility
+                likes: data.likes?.length || 0, // Safely get likes count
+                commentCount: data.commentCount || 0, // Safely get comment count
+                comments: data.commentCount || 0, // map for compatibility
                 createdAt: data.createdAt.toMillis(),
                 timestamp: data.createdAt.toMillis()
             } as import('../types').Post;
@@ -1099,9 +1116,9 @@ export class DBService {
 
     // ==================== COMMENT OPERATIONS ====================
 
-    static async addComment(commentData: Omit<Comment, 'id' | 'createdAt'>): Promise<Comment> {
+    static async addComment(commentData: Omit<AppComment, 'id' | 'createdAt'>): Promise<AppComment> {
         const commentRef = doc(collection(db, 'comments'));
-        const newComment: Comment = {
+        const newComment: AppComment = {
             id: commentRef.id,
             ...commentData,
             createdAt: Timestamp.now()
@@ -1122,16 +1139,19 @@ export class DBService {
                 userId: post.userId,
                 type: 'comment',
                 senderId: commentData.userId,
-                text: `${commentData.username} commented on your post`,
-                // @ts-ignore
-                postId: commentData.postId
+                title: 'New Comment',
+                message: `${commentData.username} commented on your post`,
+                data: {
+                    postId: commentData.postId,
+                    url: `/post/${commentData.postId}`
+                }
             });
         }
 
         return newComment;
     }
 
-    static async getPostComments(postId: string): Promise<Comment[]> {
+    static async getPostComments(postId: string): Promise<AppComment[]> {
         const q = query(
             collection(db, 'comments'),
             where('postId', '==', postId),
@@ -1139,7 +1159,14 @@ export class DBService {
         );
 
         const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => doc.data() as Comment);
+        return querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                ...data,
+                id: doc.id,
+                createdAt: data.createdAt?.toMillis() || Date.now()
+            } as AppComment;
+        });
     }
 
     static async getPosts(): Promise<import('../types').Post[]> {
@@ -1554,10 +1581,12 @@ export class DBService {
     //     return stories.sort((a, b) => b.createdAt.seconds - a.createdAt.seconds);
     // }
 
+
+    // Let's target the Story error first.
     static async viewStory(storyId: string, userId: string): Promise<void> {
         const storyRef = doc(db, 'stories', storyId);
         await updateDoc(storyRef, {
-            views: arrayUnion(userId)
+            viewers: arrayUnion(userId)
         });
     }
 
@@ -1571,52 +1600,6 @@ export class DBService {
         const querySnapshot = await getDocs(q);
         const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
         await Promise.all(deletePromises);
-    }
-
-    // ==================== NOTIFICATION OPERATIONS ====================
-
-    static async createNotification(notificationData: Omit<Notification, 'id' | 'read' | 'createdAt'>): Promise<Notification> {
-        const notificationRef = doc(collection(db, 'notifications'));
-        const newNotification: Notification = {
-            id: notificationRef.id,
-            ...notificationData,
-            read: false,
-            createdAt: Timestamp.now()
-        };
-
-        await setDoc(notificationRef, newNotification);
-        return newNotification;
-    }
-
-    static async getUserNotifications(userId: string, maxNotifications: number = 50): Promise<Notification[]> {
-        const q = query(
-            collection(db, 'notifications'),
-            where('userId', '==', userId),
-            orderBy('createdAt', 'desc'),
-            limit(maxNotifications)
-        );
-
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => doc.data() as Notification);
-    }
-
-    static async markNotificationAsRead(notificationId: string): Promise<void> {
-        const notificationRef = doc(db, 'notifications', notificationId);
-        await updateDoc(notificationRef, { read: true });
-    }
-
-    static async markAllNotificationsAsRead(userId: string): Promise<void> {
-        const q = query(
-            collection(db, 'notifications'),
-            where('userId', '==', userId),
-            where('read', '==', false)
-        );
-
-        const querySnapshot = await getDocs(q);
-        const updatePromises = querySnapshot.docs.map(doc =>
-            updateDoc(doc.ref, { read: true })
-        );
-        await Promise.all(updatePromises);
     }
 
     // ==================== STORAGE OPERATIONS ====================
@@ -2040,10 +2023,10 @@ export class DBService {
         const user = auth.currentUser;
         if (!user) throw new Error('User not authenticated');
         const token = await user.getIdToken();
-        const response = await fetch(`/api/v1/content/${contentId}`, {
+        const response = await fetch(`/ api / v1 / content / ${contentId} `, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${token} `
             }
         });
         if (!response.ok) throw new Error('Failed to delete content');
@@ -2053,7 +2036,7 @@ export class DBService {
         const user = auth.currentUser;
         if (!user) throw new Error('User not authenticated');
         const token = await user.getIdToken();
-        const response = await fetch(`/api/v1/content/${contentId}/restore`, {
+        const response = await fetch(`/ api / v1 / content / ${contentId}/restore`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`

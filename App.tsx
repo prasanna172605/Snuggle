@@ -9,6 +9,9 @@ import { Loader2 } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { errorHandler } from './services/globalErrorHandler';
 import { ThemeProvider } from './context/ThemeContext';
+import { NotificationProvider } from './context/NotificationContext';
+import { AuthProvider } from './context/AuthContext';
+import NotificationPanel from './components/NotificationPanel';
 
 // Lazy Load Pages
 const Login = React.lazy(() => import('./pages/Login'));
@@ -308,23 +311,31 @@ const App = () => {
 
   return (
     <ThemeProvider>
-      <CallProvider currentUser={currentUser}>
-        <AppContent
-          currentUser={currentUser}
-          onLogout={onLogout}
-          onUpdateUser={(user) => {
-            setCurrentUser(user);
-            localStorage.setItem('currentUser', JSON.stringify(user));
-          }}
-          onDeleteAccount={onLogout}
-          onSwitchAccount={(userId) => {
-            // Switch account logic
-          }}
-          onAddAccount={() => {
-            // Add account logic
-          }}
-        />
-      </CallProvider>
+      <AuthProvider>
+        <NotificationProvider>
+          <CallProvider currentUser={currentUser}>
+            <AppContent
+              currentUser={currentUser}
+              onLogout={onLogout}
+              onUpdateUser={(user) => {
+                setCurrentUser(user);
+                localStorage.setItem('currentUser', JSON.stringify(user));
+              }}
+              onDeleteAccount={onLogout}
+              onSwitchAccount={(userId) => {
+                // Switch account logic
+              }}
+              onAddAccount={() => {
+                // Add account logic
+              }}
+            />
+            <div className="fixed top-4 right-4 z-50">
+              <NotificationPanel />
+            </div>
+            <Toaster position="top-right" richColors closeButton />
+          </CallProvider>
+        </NotificationProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 };
