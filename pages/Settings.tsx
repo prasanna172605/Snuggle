@@ -438,6 +438,22 @@ const Settings: React.FC<SettingsProps> = ({
                   <div>
                     <h3 className="font-bold text-lg">Push Notifications</h3>
                     <p className="text-xs text-gray-500">Receive alerts on your device</p>
+                    <button
+                      onClick={async () => {
+                        const token = await DBService.requestNotificationPermission(currentUser.id);
+                        if (!token) { alert('No token'); return; }
+                        await DBService.sendPushNotification({
+                          receiverId: currentUser.id,
+                          title: 'Settings Test',
+                          body: 'Test from Settings page',
+                          type: 'system'
+                        });
+                        alert('Test sent!');
+                      }}
+                      className="mt-2 px-3 py-1 bg-black text-white text-xs rounded-lg"
+                    >
+                      Test Push
+                    </button>
                   </div>
                 </div>
                 <div

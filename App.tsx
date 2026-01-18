@@ -163,6 +163,9 @@ const AppContent = ({
       {/* Toast Notifications */}
       <Toaster position="top-right" richColors closeButton />
       <div className="w-full max-w-lg bg-white dark:bg-dark-bg relative">
+        <div className="bg-red-500 text-white text-center text-xs font-bold py-1 z-50 relative">
+          DEBUG MODE v3 - TEST PUSH ENABLED
+        </div>
         <CallOverlay />
 
         <Suspense fallback={<LoadingFallback />}>

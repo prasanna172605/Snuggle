@@ -24,12 +24,12 @@ const Notifications: React.FC<NotificationsProps> = ({ currentUser, onUserClick 
             setNotifications(notifs);
 
             if (notifs.some(n => !n.read)) {
-                DBService.markAllNotificationsAsRead(currentUser.id);
+                DBService.markAllNotificationsRead();
             }
 
             const missingIds = new Set<string>();
             notifs.forEach(n => {
-                if (!sendersRef.current[n.senderId]) {
+                if (n.senderId && !sendersRef.current[n.senderId]) {
                     missingIds.add(n.senderId);
                 }
             });
@@ -79,8 +79,28 @@ const Notifications: React.FC<NotificationsProps> = ({ currentUser, onUserClick 
 
     return (
         <div className="bg-white min-h-screen">
-            <div className="px-4 py-4 border-b border-gray-100">
+            <div className="px-4 py-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 className="text-xl font-bold text-gray-900">Notifications</h2>
+                <button
+                    onClick={async () => {
+                        if (!currentUser?.id) return; // toast.error('No User');
+                        const token = await DBService.requestNotificationPermission(currentUser.id);
+                        if (!token) {
+                            alert('Permission denied or no token got.');
+                            return;
+                        }
+                        await DBService.sendPushNotification({
+                            receiverId: currentUser.id,
+                            title: 'Test Notification',
+                            body: 'This is a test push from the debug button.',
+                            type: 'system'
+                        });
+                        alert('Test push sent! Check console for [DB] logs.');
+                    }}
+                    className="px-3 py-1 bg-gray-200 text-xs rounded hover:bg-gray-300"
+                >
+                    Test Push
+                </button>
             </div>
 
             <div className="px-6 py-6">
@@ -101,7 +121,7 @@ const Notifications: React.FC<NotificationsProps> = ({ currentUser, onUserClick 
                             return (
                                 <div
                                     key={notif.id}
-                                    onClick={() => onUserClick?.(notif.senderId)}
+                                    onClick={() => notif.senderId && onUserClick?.(notif.senderId)}
                                     className={`flex items-start px-4 py-4 hover:bg-gray-50 transition-colors cursor-pointer ${!notif.read ? 'bg-blue-50/30' : ''}`}
                                 >
                                     <div className="relative">
@@ -112,9 +132,9 @@ const Notifications: React.FC<NotificationsProps> = ({ currentUser, onUserClick 
                                     </div>
                                     <div className="ml-3 flex-1">
                                         <p className="text-sm text-gray-800">
-                                            {notif.text}
+                                            {notif.text || notif.message}
                                         </p>
-                                        <p className="text-xs text-gray-400 mt-1">{formatTime(notif.timestamp)}</p>
+                                        <p className="text-xs text-gray-400 mt-1">{formatTime(notif.createdAt?.toMillis ? notif.createdAt.toMillis() : (notif.createdAt || Date.now()))}</p>
                                     </div>
                                     {notif.type === 'follow' && (
                                         <div className="bg-gray-100 text-xs font-semibold px-3 py-1.5 rounded-lg text-gray-600">
