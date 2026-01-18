@@ -27,6 +27,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             return;
         }
 
+        // Request notification permission and save token
+        DBService.requestNotificationPermission(currentUser.id).then(token => {
+            if (token) console.log('Notification permission granted, token saved');
+        });
+
         setIsLoading(true);
         const unsubscribe = DBService.subscribeToNotifications(currentUser.id, (newNotifications) => {
             // Check for new notifications to trigger toast

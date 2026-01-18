@@ -2,7 +2,7 @@
 // Export all functions here
 
 export { onImageUpload } from "./imageProcessing";
-export { onNotificationCreate } from "./pushNotifications";
+export { onNotificationCreate, onMessageCreate } from "./pushNotifications";
 
 // Scheduled Jobs
 export {

@@ -1,9 +1,9 @@
-import * as functions from "firebase-functions";
+import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 import * as path from "path";
 import * as os from "os";
 import * as fs from "fs";
-import * as sharp from "sharp";
+import sharp = require('sharp');
 import { v4 as uuidv4 } from "uuid";
 
 admin.initializeApp();
@@ -193,6 +193,5 @@ async function uploadVariant(
  */
 async function getPublicUrl(bucket: any, filePath: string): Promise<string> {
     const file = bucket.file(filePath);
-    const [metadata] = await file.getMetadata();
     return `https://storage.googleapis.com/${bucket.name}/${filePath}`;
 }

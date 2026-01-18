@@ -24,7 +24,8 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { getToken } from 'firebase/messaging';
 import { signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged, signOut, deleteUser as deleteFirebaseUser, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { onSnapshot } from 'firebase/firestore';
-import { ref as rtdbRef, set, onDisconnect, serverTimestamp as rtdbServerTimestamp, onValue, off } from 'firebase/database';
+import { ref as rtdbRef, set, onDisconnect, serverTimestamp as rtdbServerTimestamp, onValue, off, child, get } from 'firebase/database';
+import { v4 as uuidv4 } from 'uuid';
 
 // Types
 
@@ -191,43 +192,7 @@ export class DBService {
         await updateDoc(userRef, updates);
     }
 
-    static async requestNotificationPermission(userId: string): Promise<boolean> {
-        try {
-            console.log('[FCM] Starting token registration for user:', userId);
-            if (!messaging) {
-                console.error('[FCM] Messaging not initialized');
-                return false;
-            }
 
-            const permission = await Notification.requestPermission();
-            console.log('[FCM] Notification permission:', permission);
-            if (permission !== 'granted') return false;
-
-            console.log('[FCM] Getting FCM token with VAPID key:', import.meta.env.VITE_FIREBASE_VAPID_KEY?.substring(0, 20) + '...');
-            const token = await getToken(messaging, {
-                vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
-            });
-
-            if (token) {
-                console.log('[FCM] Token received:', token.substring(0, 50) + '...');
-                console.log('[FCM] Saving to Firestore for user:', userId);
-                const userRef = doc(db, 'users', userId);
-                await updateDoc(userRef, {
-                    fcmTokens: arrayUnion(token)
-                });
-                console.log('[FCM] ✅ Token successfully saved to Firestore!');
-                console.log('Notification permission granted, token saved:', token);
-                return true;
-            } else {
-                console.error('[FCM] No token received from getToken()');
-            }
-        } catch (error) {
-            console.error('[FCM] ❌ Error during token registration:', error);
-            console.error('[FCM] Error details:', error instanceof Error ? error.message : error);
-            console.error('[FCM] Full error object:', JSON.stringify(error, null, 2));
-        }
-        return false;
-    }
 
     static async searchUsers(searchTerm: string, maxResults: number = 20): Promise<User[]> {
         const q = query(
@@ -552,35 +517,7 @@ export class DBService {
 
     // ==================== SETTINGS OPERATIONS ====================
 
-    static async updateNotificationPreferences(
-        userId: string,
-        preferences: {
-            email?: boolean;
-            push?: boolean;
-            frequency?: 'realtime' | 'hourly' | 'daily';
-            types?: {
-                followers?: boolean;
-                messages?: boolean;
-                likes?: boolean;
-                mentions?: boolean;
-            }
-        }
-    ): Promise<void> {
-        const token = await this.getCurrentToken();
-        const response = await fetch('/api/v1/settings/notifications', {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(preferences)
-        });
 
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || 'Failed to update notification preferences');
-        }
-    }
 
     static async changePassword(currentPassword: string, newPassword: string): Promise<void> {
         const token = await this.getCurrentToken();
@@ -778,13 +715,16 @@ export class DBService {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify(notification)
+            body: JSON.stringify(notificationData)
         });
 
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.message || 'Failed to create notification');
         }
+
+        const data = await response.json();
+        return data.data.notification || data.data;
     }
 
     static async markNotificationRead(notificationId: string): Promise<void> {
@@ -945,9 +885,8 @@ export class DBService {
                 username: data.username || 'Unknown',
                 imageUrl: data.imageUrl || '',
                 caption: data.caption,
-                likes: data.likes?.length || 0, // Safely get likes count
+                likes: Array.isArray(data.likes) ? data.likes.length : (typeof data.likes === 'number' ? data.likes : 0),
                 commentCount: data.commentCount || 0, // Safely get comment count
-                comments: data.commentCount || 0, // map for compatibility
                 createdAt: data.createdAt.toMillis(),
                 timestamp: data.createdAt.toMillis()
             } as import('../types').Post;
@@ -964,7 +903,7 @@ export class DBService {
 
         const querySnapshot = await getDocs(q);
         return querySnapshot.docs.map(doc => {
-            const data = doc.data() as Post;
+            const data = doc.data();
             return {
                 id: doc.id,
                 userId: data.userId,
@@ -1179,8 +1118,8 @@ export class DBService {
                 userId: data.userId,
                 imageUrl: data.imageUrl || '',
                 caption: data.caption,
-                likes: data.likes.length,
-                comments: data.commentCount,
+                likes: Array.isArray(data.likes) ? data.likes.length : (typeof data.likes === 'number' ? data.likes : 0),
+                comments: data.commentCount || 0,
                 timestamp: data.createdAt.toMillis()
             } as import('../types').Post;
         });
@@ -1188,9 +1127,112 @@ export class DBService {
 
     // ==================== MESSAGE OPERATIONS ====================
 
+    static async requestNotificationPermission(userId: string): Promise<string | null> {
+        try {
+            if (window.Notification.permission === 'granted') {
+                const token = await getToken(messaging, {
+                    vapidKey: "BOyF-_1NjdBf88a_C18C7wO_S8C8_0C8C8C8C8C8C8C8C8C8"
+                }).catch(async (err) => {
+                    console.log('getToken without VAPID failed, suggesting VAPID is needed potentially.', err);
+                    return null;
+                });
+
+                if (token) {
+                    await this.saveUserToken(userId, token);
+                    return token;
+                }
+            } else if (window.Notification.permission !== 'denied') {
+                const permission = await window.Notification.requestPermission();
+                if (permission === 'granted') {
+                    // Retry getting token
+                    const token = await getToken(messaging);
+                    if (token) {
+                        await this.saveUserToken(userId, token);
+                        return token;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error requesting notification permission:', error);
+        }
+        return null;
+    }
+
     static getChatId(userId1: string, userId2: string): string {
         return [userId1, userId2].sort().join('_');
     }
+
+    static async saveUserToken(userId: string, token: string): Promise<void> {
+        if (!userId || !token) return;
+
+        // 1. Get or generate a persistent Device ID for this client
+        let deviceId = localStorage.getItem('snuggle_device_id');
+        if (!deviceId) {
+            deviceId = uuidv4();
+            localStorage.setItem('snuggle_device_id', deviceId);
+        }
+
+        // 2. Write to Realtime Database
+        // Path: /userDevices/{userId}/{deviceId}
+        const deviceRef = rtdbRef(realtimeDb, `userDevices/${userId}/${deviceId}`);
+
+        const deviceData = {
+            token: token,
+            platform: 'web',
+            lastActive: rtdbServerTimestamp(),
+            userAgent: navigator.userAgent
+        };
+
+        try {
+            await set(deviceRef, deviceData);
+            console.log(`[DB] Saved FCM token to RTDB for device: ${deviceId}`);
+
+            // Also update legacy Firestore for backward compatibility if needed, 
+            // but we are moving to RTDB as source of truth.
+            // For now, let's keep Firestore somewhat in sync just in case, 
+            // but the Cloud Function will read from RTDB.
+            const userRef = doc(db, 'users', userId);
+            await updateDoc(userRef, {
+                fcmTokens: arrayUnion(token)
+            });
+
+        } catch (error) {
+            console.error('[DB] Error saving device token:', error);
+        }
+    }
+
+    static async updateNotificationPreferences(userId: string, preferences: any): Promise<void> {
+        const prefRef = rtdbRef(realtimeDb, `notificationPreferences/${userId}`);
+        try {
+            await set(prefRef, preferences);
+            console.log('[DB] Updated notification preferences in RTDB');
+        } catch (error) {
+            console.error('[DB] Error updating preferences:', error);
+            throw error;
+        }
+    }
+
+    static async getNotificationPreferences(userId: string): Promise<any> {
+        const prefRef = rtdbRef(realtimeDb, `notificationPreferences/${userId}`);
+        try {
+            const snapshot = await get(prefRef);
+            if (snapshot.exists()) {
+                return snapshot.val();
+            }
+            // Default preferences
+            return {
+                messages: true,
+                reactions: true,
+                follows: true, // Default to true for engagement
+                calls: true,
+                system: true
+            };
+        } catch (error) {
+            console.error('[DB] Error fetching preferences:', error);
+            return null;
+        }
+    }
+
 
     static async sendMessage(messageData: import('../types').Message): Promise<import('../types').Message> {
         if (!messageData.senderId || !messageData.receiverId) {
@@ -1232,18 +1274,8 @@ export class DBService {
             [`unreadCounts.${messageData.receiverId}`]: increment(1)
         });
 
-        // Trigger Push Notification
-        const senderProfile = await this.getUserById(messageData.senderId);
-        const senderName = senderProfile?.fullName || "New Message";
-        const msgBody = messageData.type === 'text' ? messageData.text : `Sent a ${messageData.type}`;
-
-        await this.sendPushNotification({
-            receiverId: messageData.receiverId!,
-            title: senderName,
-            body: msgBody,
-            url: '/messages',
-            icon: senderProfile?.avatar
-        });
+        // Push Notification now handled by backend Cloud Function (onMessageCreate)
+        // Client only updates DB.
 
         return { ...messageData, status: finalStatus };
     }
@@ -1531,7 +1563,7 @@ export class DBService {
 
     // ==================== STORY OPERATIONS ====================
 
-    static async createStory(storyData: Omit<Story, 'id' | 'createdAt' | 'expiresAt' | 'views'>): Promise<Story> {
+    static async createStory(storyData: Omit<Story, 'id' | 'createdAt' | 'expiresAt' | 'viewers'>): Promise<Story> {
         const storyRef = doc(collection(db, 'stories'));
         const now = Timestamp.now();
         const expiresAt = new Timestamp(now.seconds + 86400, now.nanoseconds); // 24 hours
@@ -1541,7 +1573,7 @@ export class DBService {
             ...storyData,
             createdAt: now,
             expiresAt,
-            views: []
+            viewers: []
         };
 
         await setDoc(storyRef, newStory);
@@ -1582,7 +1614,6 @@ export class DBService {
     // }
 
 
-    // Let's target the Story error first.
     static async viewStory(storyId: string, userId: string): Promise<void> {
         const storyRef = doc(db, 'stories', storyId);
         await updateDoc(storyRef, {
@@ -2023,10 +2054,10 @@ export class DBService {
         const user = auth.currentUser;
         if (!user) throw new Error('User not authenticated');
         const token = await user.getIdToken();
-        const response = await fetch(`/ api / v1 / content / ${contentId} `, {
+        const response = await fetch(`/api/v1/content/${contentId}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${token} `
+                'Authorization': `Bearer ${token}`
             }
         });
         if (!response.ok) throw new Error('Failed to delete content');
@@ -2036,37 +2067,13 @@ export class DBService {
         const user = auth.currentUser;
         if (!user) throw new Error('User not authenticated');
         const token = await user.getIdToken();
-        const response = await fetch(`/ api / v1 / content / ${contentId}/restore`, {
+        const response = await fetch(`/api/v1/content/${contentId}/restore`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
         if (!response.ok) throw new Error('Failed to restore content');
-    }
-
-    static async sendPushNotification(data: {
-        receiverId: string;
-        title: string;
-        body: string;
-        url?: string;
-        icon?: string;
-        type?: 'message' | 'call';
-        actions?: any[]; // For call actions like Accept/Decline
-        data?: Record<string, any>; // Custom data payload
-    }): Promise<void> {
-        try {
-            // Always use Vercel Production API for Push Notifications (CORS is enabled)
-            const apiUrl = 'https://snuggle-seven.vercel.app/api/send-push';
-
-            await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-        } catch (error) {
-            console.warn('[DB] Failed to send push notification:', error);
-        }
     }
 }
 
