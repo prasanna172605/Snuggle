@@ -115,6 +115,7 @@ const Notifications: React.FC<NotificationsProps> = ({ currentUser, onUserClick 
                 ) : (
                     <div className="divide-y divide-gray-50">
                         {notifications.map(notif => {
+                            if (!notif.senderId) return null;
                             const sender = senders[notif.senderId];
                             if (!sender) return null;
 

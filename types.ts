@@ -10,6 +10,12 @@ export interface User {
   fullName?: string;
   avatar?: string;
   bio?: string;
+  phone?: string;
+  dateOfBirth?: string;
+  location?: {
+    city?: string;
+    country?: string;
+  };
 
   // Status
   isOnline?: boolean;
