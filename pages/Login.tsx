@@ -92,7 +92,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigate, onGoogleSetupNeeded 
       if (!token) throw new Error('Failed to retrieve authentication token');
 
       // 3. Verify with Backend (Sync)
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -146,7 +146,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigate, onGoogleSetupNeeded 
     setError('');
     try {
       const token = await DBService.getCurrentToken();
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/2fa/verify-login`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/2fa/verify-login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -179,7 +179,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigate, onGoogleSetupNeeded 
       } else if (result.user) {
         // Sync Google Login with Backend
         const token = await DBService.getCurrentToken();
-        await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+        await fetch(`${API_BASE_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` }
         });
